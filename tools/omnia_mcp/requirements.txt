@@ -1,0 +1,16 @@
+# Omnia MCP Server - Configuration Assistant
+# Core MCP protocol
+mcp>=1.0.0
+
+# YAML parsing with comment preservation
+ruamel.yaml>=0.18.0
+
+# Standard YAML parsing (for read-only operations)
+PyYAML>=6.0
+
+# JSON Schema validation
+jsonschema>=4.20.0
+
+# Optional: SSE transport (install with: pip install 'mcp[sse]')
+# starlette>=0.36.0
+# uvicorn>=0.27.0
