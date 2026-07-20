@@ -61,3 +61,12 @@ kernel_version_override: ""
 # Leave empty ("") to disable additional cloud-init.
 # Default: "" (disabled)
 additional_cloud_init_config_file: ""
+
+#### Optional
+# Kernel ip= parameter for dracut network boot during PXE provisioning.
+# Controls which network interface the kernel uses for rootfs download.
+# On servers with multiple NICs where PXE and OS boot use different interfaces,
+# set this to "ip=<interface>:dhcp" (e.g. "ip=eno12399np0:dhcp") to force the
+# kernel to use the PXE NIC for rootfs download.
+# Default: "ip=dhcp" (kernel tries all interfaces)
+bss_ip_param: "ip=dhcp"
