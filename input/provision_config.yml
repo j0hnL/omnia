@@ -70,3 +70,11 @@ additional_cloud_init_config_file: ""
 # kernel to use the PXE NIC for rootfs download.
 # Default: "ip=dhcp" (kernel tries all interfaces)
 bss_ip_param: "ip=dhcp"
+
+#### Optional
+# Override kernel ip= parameter for compute RKE2 nodes only.
+# On multi-NIC servers (e.g. C6620 with Embedded 1GbE + Integrated 25GbE),
+# the kernel's ip=dhcp may use the wrong NIC. Set this to force a specific
+# interface, e.g. "ip=eno8303:dhcp" for C6620 Embedded NIC.
+# Leave empty to use the global bss_ip_param for all groups.
+bss_ip_param_compute: ""

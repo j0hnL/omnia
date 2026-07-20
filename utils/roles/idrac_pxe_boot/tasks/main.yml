@@ -64,6 +64,40 @@
       validate_certs: false
       resource_id: "System.Embedded.1"
   block:
+    - name: Set PXE device interface for multi-NIC servers
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/redfish/v1/Systems/System.Embedded.1/Bios/Settings"
+        user: "{{ bmc_username | default(hostvars['localhost']['bmc_username']) }}"
+        password: "{{ bmc_password | default(hostvars['localhost']['bmc_password']) }}"
+        method: PATCH
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          Attributes:
+            PxeDev1Interface: "{{ pxe_device_interface }}"
+        status_code: [200, 202]
+      when: pxe_device_interface | default('') | length > 0
+      register: pxe_dev_result
+      failed_when: false
+
+    - name: Create BIOS config job for PXE device change
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}/redfish/v1/Managers/iDRAC.Embedded.1/Jobs"
+        user: "{{ bmc_username | default(hostvars['localhost']['bmc_username']) }}"
+        password: "{{ bmc_password | default(hostvars['localhost']['bmc_password']) }}"
+        method: POST
+        force_basic_auth: true
+        validate_certs: false
+        body_format: json
+        body:
+          TargetSettingsURI: "/redfish/v1/Systems/System.Embedded.1/Bios/Settings"
+        status_code: [200, 202]
+      when:
+        - pxe_device_interface | default('') | length > 0
+        - pxe_dev_result is success
+      failed_when: false
+
     - name: Set boot option from pxe
       dellemc.openmanage.idrac_boot:
         idrac_ip: "{{ inventory_hostname }}"
