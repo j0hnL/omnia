@@ -1092,8 +1092,8 @@ def validate_functional_groups_software_consistency(pxe_mapping_file_path, softw
     # Validate service_k8s and slurm_custom, collecting all errors
     consistency_errors = []
 
-    if has_service_k8s_fg and "service_k8s" not in software_names:
-        logger.error("Service k8s functional groups found but service_k8s not in software_config.json")
+    if has_service_k8s_fg and "service_k8s" not in software_names and "service_rke2" not in software_names:
+        logger.error("Service k8s functional groups found but neither service_k8s nor service_rke2 in software_config.json")
         consistency_errors.append(en_us_validation_msg.SERVICE_K8S_FUNCTIONAL_GROUP_WITHOUT_SOFTWARE_MSG)
 
     if has_slurm_fg and "slurm_custom" not in software_names:
