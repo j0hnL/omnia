@@ -33,7 +33,7 @@
           | list
           | first }}
   vars:
-    k8s_cluster_name: "service_k8s_cluster"
+    k8s_cluster_name: "{{ 'service_rke2_k8s_cluster' if (service_rke2_k8s_cluster is defined) else 'service_k8s_cluster' }}"
 
 - name: Set cluster configuration facts
   ansible.builtin.set_fact:
