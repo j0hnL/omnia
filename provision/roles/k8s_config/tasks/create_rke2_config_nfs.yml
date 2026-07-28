@@ -29,8 +29,8 @@
     pod_external_ip_range: "{{ service_rke2_k8s_cluster[0].pod_external_ip_range }}"
     k8s_service_addresses: "{{ service_rke2_k8s_cluster[0].k8s_service_addresses }}"
     k8s_pod_network_cidr: "{{ service_rke2_k8s_cluster[0].k8s_pod_network_cidr }}"
-    csi_powerscale_driver_secret_file_path: "{{ service_rke2_k8s_cluster[0].csi_powerscale_driver_secret_file_path }}"
-    csi_powerscale_driver_values_file_path: "{{ service_rke2_k8s_cluster[0].csi_powerscale_driver_values_file_path }}"
+    csi_powerscale_driver_secret_file_path: "{{ service_rke2_k8s_cluster[0].csi_powerscale_driver_secret_file_path | default('') }}"
+    csi_powerscale_driver_values_file_path: "{{ service_rke2_k8s_cluster[0].csi_powerscale_driver_values_file_path | default('') }}"
     nfs_storage_name: "{{ service_rke2_k8s_cluster[0].nfs_storage_name }}"
 
 - name: Read the service_k8s mount point
