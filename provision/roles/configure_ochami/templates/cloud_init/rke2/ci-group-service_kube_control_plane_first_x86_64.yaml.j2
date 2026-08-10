@@ -268,7 +268,7 @@
               ipAddressPools:
               - first-pool
 
-{% if hostvars['localhost']['idrac_telemetry_support'] or hostvars['localhost']['ldms_support'] %}
+{% if hostvars['localhost']['idrac_telemetry_support'] | default(false) or hostvars['localhost']['ldms_support'] | default(false) %}
         - path: /root/telemetry.sh
           owner: root:root
           permissions: '0755'
@@ -614,7 +614,7 @@
             systemctl restart nfs-client.target
             systemctl restart rpcbind
 
-{% if hostvars['localhost']['idrac_telemetry_support'] or hostvars['localhost']['ldms_support'] %}
+{% if hostvars['localhost']['idrac_telemetry_support'] | default(false) or hostvars['localhost']['ldms_support'] | default(false) %}
             echo "Applying Telemetry Kubernetes deployments"
             /root/telemetry.sh
 {% endif %}
