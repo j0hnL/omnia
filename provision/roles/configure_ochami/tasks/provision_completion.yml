@@ -13,12 +13,6 @@
 #  limitations under the License.
 ---
 
-- name: Copy config.ipxe as autoexec.ipxe for iPXE firmware compatibility
-  ansible.builtin.command:
-    cmd: podman exec coresmd-coredhcp cp /tftpboot/config.ipxe /tftpboot/autoexec.ipxe
-  changed_when: true
-  failed_when: false
-
 - name: Provision completion
   ansible.builtin.debug:
     msg: "{{ provision_completion_msg.splitlines() | join(' ') }}"

@@ -27,12 +27,6 @@ boot_source_override_enabled: continuous
 # Set boot source override target. Valid values are pxe,uefi_http,sd_card,uefi_target,utilities,bios_setup,hdd,cd,floppy,none
 boot_source_override_target: pxe
 
-# Optional: Set PXE device interface for multi-NIC servers.
-# For servers with multiple NICs, specify which NIC to use for PXE boot.
-# Examples: "NIC.Integrated.1-1-1" (25GbE), "NIC.Embedded.1-1-1" (1GbE)
-# Leave empty to use the BIOS default PXE device.
-pxe_device_interface: "{{ hostvars['localhost']['pxe_device_interface'] | default('') }}"
-
 # Usage: main.yml
 lc_check_fail_msg: "Failed. iDRAC is not ready. Retry again after iDRAC is ready"
 provision_os_msg: "OS provisioning is initiated. Wait for installation to complete for all servers."
