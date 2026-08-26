@@ -1,0 +1,57 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Unified playbook to build OS images using image-thrillhouse.
+# Replaces the separate build_x86_64.yml and build_aarch64.yml playbooks.
+#
+# Usage (standalone — no Omnia needed):
+#   ansible-playbook omnia.image_builder.build -e @examples/rocky_x86_64.yml
+#
+# Usage (aarch64 cross-build on x86_64):
+#   ansible-playbook omnia.image_builder.build -e @examples/standalone_aarch64_crossbuild.yml
+#
+# Usage (fully offline — with local repo mirror):
+#   ansible-playbook omnia.image_builder.build \
+#     -e @examples/offline_x86_64.yml -e use_local_mirror=true
+#
+# Usage (with Omnia integration):
+#   ansible-playbook omnia.image_builder.build \
+#     -e omnia_integration=true -e registry_url=myregistry:5000
+---
+
+- name: Prepare storage and local mirror
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  roles:
+    - role: omnia.image_builder.repo_mirror
+      when: use_local_mirror | default(false) | bool
+    - role: omnia.image_builder.local_storage
+
+- name: Generate image-thrillhouse configs
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  roles:
+    - role: omnia.image_builder.config_gen
+
+- name: Build images with image-thrillhouse
+  hosts: "{{ build_host | default('localhost') }}"
+  gather_facts: true
+  roles:
+    - role: omnia.image_builder.build
+
+- name: Build completion
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Build image completion message
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          Image build completed successfully.
+          OS: {{ os_family | default('rhel') }} {{ os_version | default('') }}
+          Arch: {{ target_arch | default('x86_64') }}
+          Builder: image-thrillhouse
+          Output: {{ output_dir | default(work_dir | default('/var/lib/image-builder') + '/output') }}
+          ============================================================

@@ -1,0 +1,22 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+galaxy_info:
+  role_name: build
+  author: Dell Omnia Team
+  description: >
+    Invoke image-thrillhouse to build OS images from generated YAML configs.
+    Supports host binary or containerized execution, cross-architecture
+    builds via QEMU, and PXE artifact export.
+  license: Apache-2.0
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions: ["9", "10"]
+    - name: Fedora
+      versions: ["41", "42"]
+    - name: Ubuntu
+      versions: ["22.04", "24.04"]
+    - name: Debian
+      versions: ["11", "12"]
+dependencies: []

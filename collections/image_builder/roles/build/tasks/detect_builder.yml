@@ -1,0 +1,51 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Detect how to run image-thrillhouse: host binary or container.
+---
+
+- name: Check if image-thrillhouse binary exists on host
+  ansible.builtin.stat:
+    path: "{{ image_thrillhouse_bin }}"
+  register: _it_bin_stat
+
+- name: Set builder method — host binary
+  ansible.builtin.set_fact:
+    _builder_method: "host-binary"
+    _builder_bin: "{{ image_thrillhouse_bin }}"
+    _use_container_builder: false
+  when: _it_bin_stat.stat.exists | default(false)
+
+- name: Set builder method — container
+  when: not (_it_bin_stat.stat.exists | default(false))
+  block:
+    - name: Check if podman is available
+      ansible.builtin.command: which podman
+      register: _podman_check
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if neither binary nor podman available
+      ansible.builtin.fail:
+        msg: |
+          image-thrillhouse not found at {{ image_thrillhouse_bin }} and podman is not available.
+          Install image-thrillhouse or podman to proceed.
+      when: _podman_check.rc != 0
+
+    - name: Pull image-thrillhouse container
+      ansible.builtin.command: >
+        podman pull {{ image_thrillhouse_container }}
+      register: _pull_result
+      changed_when: "'Pulling' in _pull_result.stdout | default('')"
+      retries: 3
+      delay: 10
+      until: _pull_result is not failed
+
+    - name: Set container builder facts
+      ansible.builtin.set_fact:
+        _builder_method: "container"
+        _use_container_builder: true
+
+- name: Display builder detection result
+  ansible.builtin.debug:
+    msg: "image-thrillhouse builder: {{ _builder_method }} {{ '(' + _builder_bin + ')' if _builder_method == 'host-binary' else '(' + image_thrillhouse_container + ')' }}"

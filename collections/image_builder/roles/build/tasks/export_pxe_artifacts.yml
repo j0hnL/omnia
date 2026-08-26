@@ -1,0 +1,98 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Extract vmlinuz + initramfs from a built image for PXE boot.
+# image-thrillhouse handles squashfs export via its publish config,
+# but kernel/initramfs extraction needs buildah mount access.
+---
+
+- name: "Create PXE artifact directory for {{ _export_label }}"
+  ansible.builtin.file:
+    path: "{{ output_dir }}/{{ _export_group_name }}"
+    state: directory
+    mode: "0755"
+
+- name: "Extract kernel and initramfs from {{ _export_label }}"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      IMG="{{ _export_image_name }}"
+
+      # Check if image exists in local storage
+      if ! buildah images --format '{% raw %}{{.Name}}:{{.Tag}}{% endraw %}' | grep -qF "{{ _export_image_name | regex_replace('^localhost/', '') }}"; then
+        echo "Image {{ _export_image_name }} not found in local storage, skipping PXE extract"
+        exit 0
+      fi
+
+      CTR=$(buildah from "$IMG")
+      MOUNT=$(buildah mount "$CTR")
+      echo "Mounted $IMG at $MOUNT"
+
+      # Extract kernel
+      KVER=$(ls "$MOUNT/lib/modules/" 2>/dev/null | sort -V | tail -1 || true)
+      if [ -n "$KVER" ]; then
+        # vmlinuz: check /boot (RHEL/Rocky/Alma) then /lib/modules (Fedora 42+)
+        if [ -f "$MOUNT/boot/vmlinuz-$KVER" ]; then
+          cp "$MOUNT/boot/vmlinuz-$KVER" {{ output_dir }}/{{ _export_group_name }}/vmlinuz
+          echo "Exported kernel: /boot/vmlinuz-$KVER"
+        elif [ -f "$MOUNT/lib/modules/$KVER/vmlinuz" ]; then
+          cp "$MOUNT/lib/modules/$KVER/vmlinuz" {{ output_dir }}/{{ _export_group_name }}/vmlinuz
+          echo "Exported kernel: /lib/modules/$KVER/vmlinuz"
+        fi
+
+        # initramfs: RHEL uses initramfs-<kver>.img, Debian uses initrd.img-<kver>
+        if [ -f "$MOUNT/boot/initramfs-$KVER.img" ]; then
+          cp "$MOUNT/boot/initramfs-$KVER.img" {{ output_dir }}/{{ _export_group_name }}/initramfs.img
+          echo "Exported initramfs: /boot/initramfs-$KVER.img"
+        elif [ -f "$MOUNT/boot/initrd.img-$KVER" ]; then
+          cp "$MOUNT/boot/initrd.img-$KVER" {{ output_dir }}/{{ _export_group_name }}/initramfs.img
+          echo "Exported initramfs: /boot/initrd.img-$KVER"
+        fi
+      fi
+
+      # Generate manifest.json
+      cd {{ output_dir }}/{{ _export_group_name }}
+      checksum() { [ -f "$1" ] && sha256sum "$1" | awk '{print $1}' || echo ""; }
+      filesize() { [ -f "$1" ] && stat -c%s "$1" || echo 0; }
+      cat > manifest.json << MANIFEST_EOF
+      {
+        "image_name": "{{ _export_group_name }}",
+        "os_family": "{{ os_family | default('rhel') }}",
+        "os_version": "{{ os_version | default('') }}",
+        "target_arch": "{{ target_arch | default('x86_64') }}",
+        "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "source_image": "{{ _export_image_name }}",
+        "builder": "image-thrillhouse",
+        "files": {
+          "rootfs": {
+            "size_bytes": $(filesize rootfs 2>/dev/null || echo 0),
+            "sha256": "$(checksum rootfs 2>/dev/null)"
+          },
+          "vmlinuz": {
+            "size_bytes": $(filesize vmlinuz),
+            "sha256": "$(checksum vmlinuz)"
+          },
+          "initramfs": {
+            "size_bytes": $(filesize initramfs.img),
+            "sha256": "$(checksum initramfs.img)"
+          }
+        }
+      }
+      MANIFEST_EOF
+
+      sha256sum vmlinuz initramfs.img 2>/dev/null > SHA256SUMS || true
+
+      buildah umount "$CTR"
+      buildah rm "$CTR"
+      echo "PXE artifacts exported to {{ output_dir }}/{{ _export_group_name }}/"
+      ls -lh {{ output_dir }}/{{ _export_group_name }}/
+    executable: /bin/bash
+  register: _pxe_export_result
+  changed_when: true
+  failed_when: false
+
+- name: "Display PXE export result for {{ _export_label }}"
+  ansible.builtin.debug:
+    msg:
+      - "PXE artifacts: {{ output_dir }}/{{ _export_group_name }}/"
+      - "{{ _pxe_export_result.stdout_lines | last | default('(no output)') }}"

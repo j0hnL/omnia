@@ -1,0 +1,41 @@
+---
+namespace: omnia
+name: image_builder
+version: 1.0.0
+readme: README.md
+authors:
+  - John Lockman <john_lockman@dell.com>
+  - Dell Omnia Team
+description: >
+  Standalone Ansible collection for building bootable Linux OS images for HPC
+  and Kubernetes clusters. Uses OpenCHAMI image-thrillhouse as the core build
+  engine. Produces base and per-functional-group compute images, publishes to
+  OCI registries, S3 (MinIO or PowerScale), and local squashfs exports.
+  Supports x86_64 and aarch64 architectures, multiple OS families (RHEL,
+  Rocky, AlmaLinux, Fedora, Ubuntu, Debian), offline mode, and cross-builds.
+license:
+  - Apache-2.0
+license_file: LICENSE
+tags:
+  - hpc
+  - image
+  - builder
+  - rhel
+  - openchami
+  - kubernetes
+  - slurm
+  - provisioning
+  - dell
+  - omnia
+dependencies:
+  containers.podman: ">=1.10.0"
+repository: https://github.com/j0hnL/omnia
+documentation: https://omnia.readthedocs.io
+homepage: https://github.com/dell/omnia
+issues: https://github.com/dell/omnia/issues
+build_ignore:
+  - "*.pyc"
+  - "__pycache__"
+  - ".git"
+  - ".github"
+  - tests/output

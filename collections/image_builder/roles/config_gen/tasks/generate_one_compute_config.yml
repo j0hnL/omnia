@@ -1,0 +1,30 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Generate image-thrillhouse YAML config for a single compute image.
+---
+
+- name: "Set compute vars for {{ fg_item.key }}"
+  ansible.builtin.set_fact:
+    _fg_name: "{{ fg_item.key }}"
+    _fg_packages: "{{ fg_item.value.packages }}"
+    _fg_functional_group: "{{ fg_item.value.functional_group }}"
+    _compute_image_name: "{{ os_family }}-{{ fg_item.key }}{{ image_name_suffix | default('') }}"
+
+- name: "Resolve post-install commands for {{ _fg_name }}"
+  ansible.builtin.set_fact:
+    _fg_post_cmds: "{{ _compute_commands[_fg_functional_group] | default([]) }}"
+
+- name: "Generate config for {{ _fg_name }}"
+  ansible.builtin.template:
+    src: "compute-config.yaml.j2"
+    dest: "{{ config_output_dir }}/{{ _fg_name }}.yaml"
+    mode: "{{ dir_permissions_644 }}"
+  vars:
+    _repos: "{{ repos }}"
+    _config_path: "{{ config_output_dir }}/{{ _fg_name }}.yaml"
+    _base_image_name: "{{ base_image_name }}"
+
+- name: "Display compute config for {{ _fg_name }}"
+  ansible.builtin.debug:
+    msg: "Generated: {{ config_output_dir }}/{{ _fg_name }}.yaml ({{ _fg_packages | length }} packages)"

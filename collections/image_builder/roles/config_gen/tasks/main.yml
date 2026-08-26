@@ -1,0 +1,55 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# config_gen role — generates image-thrillhouse YAML configs from Omnia vars.
+#
+# Supports two modes:
+#   Standalone: user provides base_image_packages, repos, compute_images_dict
+#   Omnia:      reads software_config.json and functional_groups_config.yml
+#
+# Outputs:
+#   {{ config_output_dir }}/base.yaml          — base image config
+#   {{ config_output_dir }}/<fg_name>.yaml     — per-compute-group configs
+#   {{ config_output_dir }}/build_manifest.yml — list of configs to build
+---
+
+- name: Create config output directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "{{ dir_permissions_755 }}"
+  loop:
+    - "{{ config_output_dir }}"
+    - "{{ build_log_dir }}"
+    - "{{ output_dir }}"
+
+- name: Resolve packages and repos
+  ansible.builtin.include_tasks: resolve_inputs.yml
+
+- name: Set package manager for this OS family
+  ansible.builtin.set_fact:
+    _pkg_manager: "{{ _pkg_manager_map[os_family | default('rhel')] | default('dnf') }}"
+
+- name: Install CA certificate (optional)
+  when: ca_cert_path | default('') | length > 0
+  block:
+    - name: Copy CA certificate to anchors
+      ansible.builtin.copy:
+        src: "{{ ca_cert_path }}"
+        dest: "/etc/pki/ca-trust/source/anchors/image_builder_ca.crt"
+        mode: "{{ dir_permissions_644 }}"
+      become: true
+
+    - name: Update CA trust
+      ansible.builtin.command: update-ca-trust
+      changed_when: false
+
+- name: Generate base image config
+  ansible.builtin.include_tasks: generate_base_config.yml
+
+- name: Generate compute image configs
+  ansible.builtin.include_tasks: generate_compute_configs.yml
+  when: compute_images_dict | default({}) | length > 0
+
+- name: Write build manifest
+  ansible.builtin.include_tasks: write_manifest.yml

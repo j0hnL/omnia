@@ -1,0 +1,59 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# config_gen role — generates image-thrillhouse YAML configs from Omnia vars.
+---
+
+# ── OS ──────────────────────────────────────────────────────────────────
+os_family: "rhel"
+os_version: "10.0"
+target_arch: "x86_64"
+
+# ── Packages ────────────────────────────────────────────────────────────
+base_image_packages: []
+compute_images_dict: {}
+repos: []
+
+# ── Registry ────────────────────────────────────────────────────────────
+registry_url: ""
+registry_ns: "images"
+registry_tls_verify: true
+
+# ── S3 publishing ──────────────────────────────────────────────────────
+publish_s3: false
+s3_endpoint: ""
+s3_access_id: ""
+s3_secret_key: ""
+s3_bucket: "boot-images"
+
+# ── Work directory ──────────────────────────────────────────────────────
+work_dir: "/var/lib/image-builder"
+output_dir: "{{ work_dir }}/output"
+
+# ── GPG verification ──────────────────────────────────────────────────
+gpg_check: true
+
+# ── Image naming ───────────────────────────────────────────────────────
+image_name_suffix: ""
+
+# ── RHEL subscription (optional) ──────────────────────────────────────
+rhel_username: ""
+rhel_password: ""
+rhel_org_id: ""
+rhel_activation_key: ""
+rhel_satellite_url: ""
+rhel_fallback_to_alma: true
+
+# ── Omnia integration ─────────────────────────────────────────────────
+omnia_integration: false
+metadata_file_path: "/opt/omnia/offline_repo/.data/localrepo_metadata.yml"
+functional_groups_config_path: "/opt/omnia/.data/functional_groups_config.yml"
+input_project_dir: "/opt/omnia/input"
+enable_build_stream: false
+
+# ── Offline mirror ─────────────────────────────────────────────────────
+use_local_mirror: false
+serve_port: 8080
+
+# ── CA certificate ─────────────────────────────────────────────────────
+ca_cert_path: ""

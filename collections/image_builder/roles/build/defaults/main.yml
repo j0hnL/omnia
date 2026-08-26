@@ -1,0 +1,50 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# build role — invokes image-thrillhouse to build images from generated configs.
+---
+
+# ── Work directory ──────────────────────────────────────────────────────
+work_dir: "/var/lib/image-builder"
+output_dir: "{{ work_dir }}/output"
+
+# ── image-thrillhouse binary ───────────────────────────────────────────
+# Path to the image-thrillhouse binary. The role will:
+#   1. Use this path if it exists
+#   2. Otherwise, use the container image below
+image_thrillhouse_bin: "/usr/local/bin/image-thrillhouse"
+
+# Container image for image-thrillhouse (fallback when binary not on host)
+image_thrillhouse_container: "ghcr.io/openchami/image-thrillhouse:latest"
+
+# ── Build settings ─────────────────────────────────────────────────────
+# Log level for image-thrillhouse (debug, info, warn, error)
+build_log_level: "info"
+
+# Architecture for multi-arch builds (defaults to host arch)
+target_arch: "x86_64"
+
+# ── Build retries ──────────────────────────────────────────────────────
+build_retries: 3
+build_retry_delay: 10
+
+# ── Cross-build (aarch64 on x86_64) ───────────────────────────────────
+# QEMU binfmt_misc image for cross-architecture builds
+qemu_binfmt_image: "docker.io/multiarch/qemu-user-static"
+qemu_skip_if_registered: true
+
+# ── S3 publishing (for PowerScale ACL) ─────────────────────────────────
+publish_s3: false
+s3_provider: ""
+
+# ── OS (needed for export) ─────────────────────────────────────────────
+os_family: "rhel"
+os_version: "10.0"
+
+# ── Registry ────────────────────────────────────────────────────────────
+registry_url: ""
+registry_ns: "images"
+
+# ── Squashfs export settings ──────────────────────────────────────────
+squashfs_compression: "zstd"
+squashfs_comp_level: 3

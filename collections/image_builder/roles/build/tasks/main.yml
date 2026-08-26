@@ -1,0 +1,41 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# build role — reads the build manifest and invokes image-thrillhouse
+# for each config in order (base first, then compute images).
+---
+
+- name: Ensure log directory exists
+  ansible.builtin.file:
+    path: "{{ build_log_dir }}"
+    state: directory
+    mode: "{{ dir_permissions_755 }}"
+
+- name: Detect image-thrillhouse availability
+  ansible.builtin.include_tasks: detect_builder.yml
+
+- name: Setup QEMU for cross-architecture builds
+  ansible.builtin.include_tasks: setup_qemu.yml
+  when:
+    - target_arch != ansible_architecture | default('x86_64')
+    - _use_container_builder | default(false) | bool or _builder_bin is defined
+
+- name: Read build manifest
+  ansible.builtin.include_vars:
+    file: "{{ config_output_dir }}/build_manifest.yml"
+    name: _manifest
+
+- name: Display build plan
+  ansible.builtin.debug:
+    msg:
+      - "Build plan: {{ _manifest.configs | length }} images"
+      - "Architecture: {{ _manifest.target_arch }}"
+      - "OS: {{ _manifest.os_family }} {{ _manifest.os_version }}"
+      - "Builder: {{ _builder_method }}"
+
+- name: Build each image from manifest
+  ansible.builtin.include_tasks: build_one.yml
+  loop: "{{ _manifest.configs }}"
+  loop_control:
+    loop_var: _build_item
+    label: "{{ _build_item.name }}"

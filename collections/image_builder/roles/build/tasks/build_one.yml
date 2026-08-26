@@ -1,0 +1,78 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Build a single image using image-thrillhouse.
+# Called in a loop from main.yml for each entry in the build manifest.
+---
+
+- name: "Display build target: {{ _build_item.name }}"
+  ansible.builtin.debug:
+    msg:
+      - "Building: {{ _build_item.name }} ({{ _build_item.type }})"
+      - "Config: {{ _build_item.config }}"
+      - "Method: {{ _builder_method }}"
+
+- name: "Build {{ _build_item.name }} via host binary"
+  when: _builder_method == 'host-binary'
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      {{ _builder_bin }} build \
+        --config {{ _build_item.config }} \
+        --log-level {{ build_log_level | default('info') }} \
+        {% if target_arch != ansible_architecture | default('x86_64') %}
+        --arch {{ target_arch }} \
+        {% endif %}
+        2>&1 | tee {{ build_log_dir }}/{{ _build_item.name }}.log
+    executable: /bin/bash
+  register: _build_result_bin
+  changed_when: true
+  retries: "{{ build_retries | default(3) }}"
+  delay: "{{ build_retry_delay | default(10) }}"
+  until: _build_result_bin is not failed
+
+- name: "Build {{ _build_item.name }} via container"
+  when: _builder_method == 'container'
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      podman run --rm --privileged --network host \
+        -v {{ work_dir }}:{{ work_dir }}:z \
+        -v {{ output_dir }}:{{ output_dir }}:z \
+        -v /var/lib/containers:/var/lib/containers:z \
+        {% if ca_cert_path | default('') | length > 0 %}
+        -v {{ ca_cert_path }}:/etc/pki/ca-trust/source/anchors/ca.crt:ro \
+        {% endif %}
+        {{ image_thrillhouse_container }} \
+        build \
+          --config {{ _build_item.config }} \
+          --log-level {{ build_log_level | default('info') }} \
+          {% if target_arch != ansible_architecture | default('x86_64') %}
+          --arch {{ target_arch }} \
+          {% endif %}
+        2>&1 | tee {{ build_log_dir }}/{{ _build_item.name }}.log
+    executable: /bin/bash
+  register: _build_result_ctr
+  changed_when: true
+  retries: "{{ build_retries | default(3) }}"
+  delay: "{{ build_retry_delay | default(10) }}"
+  until: _build_result_ctr is not failed
+
+- name: "Set build result for {{ _build_item.name }}"
+  ansible.builtin.set_fact:
+    _last_build_result: "{{ _build_result_bin if _builder_method == 'host-binary' else _build_result_ctr }}"
+
+- name: "Display build result for {{ _build_item.name }}"
+  ansible.builtin.debug:
+    msg:
+      - "Build complete: {{ _build_item.name }}"
+      - "Log: {{ build_log_dir }}/{{ _build_item.name }}.log"
+      - "Exit code: {{ _last_build_result.rc | default('N/A') }}"
+
+- name: "Export {{ _build_item.name }} — extract kernel and initramfs for PXE"
+  ansible.builtin.include_tasks: export_pxe_artifacts.yml
+  vars:
+    _export_image_name: "localhost/{{ registry_ns | default('images') }}/{{ _build_item.name }}:{{ os_version }}"
+    _export_group_name: "{{ _build_item.functional_group | default('base') if _build_item.type == 'compute' else 'base' }}"
+    _export_label: "{{ _build_item.name }}"
+  when: _build_item.type == 'base'

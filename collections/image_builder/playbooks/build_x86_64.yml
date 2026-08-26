@@ -1,0 +1,61 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# x86_64 image build playbook.
+# This is a convenience wrapper that sets target_arch and delegates to
+# the unified build playbook using image-thrillhouse.
+#
+# Usage (standalone — no Omnia needed):
+#   ansible-playbook omnia.image_builder.build_x86_64 -e @my_image_vars.yml
+#
+# Usage (fully offline — create local repo mirror first):
+#   ansible-playbook omnia.image_builder.build_x86_64 \
+#     -e @my_image_vars.yml -e use_local_mirror=true
+#
+# Usage (with Omnia integration):
+#   ansible-playbook omnia.image_builder.build_x86_64 \
+#     -e omnia_integration=true -e registry_url=myregistry:5000
+#
+# Prefer: ansible-playbook omnia.image_builder.build -e target_arch=x86_64
+---
+
+- name: Prepare storage and local mirror (x86_64)
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    target_arch: "x86_64"
+  roles:
+    - role: omnia.image_builder.repo_mirror
+      when: use_local_mirror | default(false) | bool
+    - role: omnia.image_builder.local_storage
+
+- name: Generate image-thrillhouse configs (x86_64)
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    target_arch: "x86_64"
+  roles:
+    - role: omnia.image_builder.config_gen
+
+- name: Build x86_64 images with image-thrillhouse
+  hosts: "{{ build_host | default('localhost') }}"
+  gather_facts: true
+  vars:
+    target_arch: "x86_64"
+  roles:
+    - role: omnia.image_builder.build
+
+- name: Build completion
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Build image completion message
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          x86_64 image build completed successfully.
+          Builder: image-thrillhouse
+          Output: {{ output_dir | default(work_dir | default('/var/lib/image-builder') + '/output') }}
+          ============================================================

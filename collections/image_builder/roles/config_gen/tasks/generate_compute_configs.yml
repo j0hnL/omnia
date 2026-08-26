@@ -1,0 +1,12 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Generate image-thrillhouse YAML configs for each compute image.
+---
+
+- name: Generate config for each compute group
+  ansible.builtin.include_tasks: generate_one_compute_config.yml
+  loop: "{{ compute_images_dict | dict2items }}"
+  loop_control:
+    loop_var: fg_item
+    label: "{{ fg_item.key }}"

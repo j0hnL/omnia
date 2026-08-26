@@ -1,0 +1,180 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Resolve package lists and repos — standalone or Omnia mode.
+# Merges fetch_packages logic into config_gen (single role does both).
+---
+
+# ── Standalone mode: user provides packages and repos directly ─────────
+- name: Validate standalone inputs
+  when: not omnia_integration | default(false) | bool
+  block:
+    - name: Check that base_image_packages is provided
+      ansible.builtin.fail:
+        msg: |
+          base_image_packages must be a non-empty list when running standalone.
+          Example: -e '{"base_image_packages": ["kernel", "dracut", "NetworkManager"]}'
+      when: base_image_packages | default([]) | length == 0
+
+    - name: Auto-generate RHEL repos from subscription credentials
+      when:
+        - repos | default([]) | length == 0
+        - os_family | default('rhel') == 'rhel'
+      block:
+        - name: Generate RHEL repos from Satellite URL
+          ansible.builtin.set_fact:
+            repos:
+              - name: "baseos"
+                base_url: "{{ rhel_satellite_url }}/content/dist/rhel{{ os_version.split('.')[0] }}/{{ os_version }}/{{ target_arch }}/baseos/os"
+                gpg: ""
+              - name: "appstream"
+                base_url: "{{ rhel_satellite_url }}/content/dist/rhel{{ os_version.split('.')[0] }}/{{ os_version }}/{{ target_arch }}/appstream/os"
+                gpg: ""
+          when: rhel_satellite_url | default('') | length > 0
+
+        - name: Generate RHEL repos from CDN with subscription credentials
+          ansible.builtin.set_fact:
+            repos:
+              - name: "baseos"
+                base_url: "https://cdn.redhat.com/content/dist/rhel{{ os_version.split('.')[0] }}/{{ os_version }}/{{ target_arch }}/baseos/os"
+                gpg: "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release"
+                sslclientcert: "/etc/pki/entitlement/{{ _rhel_entitlement_cert }}"
+                sslclientkey: "/etc/pki/entitlement/{{ _rhel_entitlement_key }}"
+                sslcacert: "/etc/rhsm/ca/redhat-uep.pem"
+              - name: "appstream"
+                base_url: "https://cdn.redhat.com/content/dist/rhel{{ os_version.split('.')[0] }}/{{ os_version }}/{{ target_arch }}/appstream/os"
+                gpg: "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release"
+                sslclientcert: "/etc/pki/entitlement/{{ _rhel_entitlement_cert }}"
+                sslclientkey: "/etc/pki/entitlement/{{ _rhel_entitlement_key }}"
+                sslcacert: "/etc/rhsm/ca/redhat-uep.pem"
+          vars:
+            _rhel_entitlement_cert: "{{ lookup('fileglob', '/etc/pki/entitlement/*[0-9].pem') | basename | default('') }}"
+            _rhel_entitlement_key: "{{ lookup('fileglob', '/etc/pki/entitlement/*-key.pem') | basename | default('') }}"
+          when:
+            - rhel_satellite_url | default('') | length == 0
+            - repos | default([]) | length == 0
+            - _rhel_entitlement_cert | default('') | length > 0
+
+        - name: Fallback to AlmaLinux repos (binary compatible with RHEL)
+          ansible.builtin.set_fact:
+            repos:
+              - name: "baseos"
+                base_url: "https://repo.almalinux.org/almalinux/{{ os_version.split('.')[0] }}/BaseOS/{{ target_arch }}/os"
+                gpg: ""
+              - name: "appstream"
+                base_url: "https://repo.almalinux.org/almalinux/{{ os_version.split('.')[0] }}/AppStream/{{ target_arch }}/os"
+                gpg: ""
+          when:
+            - repos | default([]) | length == 0
+            - rhel_fallback_to_alma | default(true) | bool
+
+        - name: Display RHEL repo source
+          ansible.builtin.debug:
+            msg: >-
+              RHEL repos: {{ 'Satellite (' + rhel_satellite_url + ')'
+                if rhel_satellite_url | default('') | length > 0
+                else ('CDN with entitlement certs'
+                  if repos | default([]) | selectattr('sslclientcert', 'defined') | list | length > 0
+                  else 'AlmaLinux fallback (binary compatible)') }}
+
+    - name: Override repos with local mirror when offline
+      ansible.builtin.set_fact:
+        repos:
+          - name: "local-mirror"
+            base_url: "http://localhost:{{ serve_port }}/repo"
+            gpg: ""
+      when: use_local_mirror | default(false) | bool
+
+    - name: Validate repos are available
+      ansible.builtin.fail:
+        msg: |
+          No repos configured. For RHEL, provide one of:
+            1. repos: [{name, base_url, gpg}] — direct repo URLs
+            2. rhel_satellite_url — your Satellite/Capsule server
+            3. System must be registered (entitlement certs in /etc/pki/entitlement/)
+            4. Set rhel_fallback_to_alma: true — use AlmaLinux repos (binary compatible)
+          For other OS families, provide repos directly.
+      when: repos | default([]) | length == 0
+
+    - name: Display standalone configuration
+      ansible.builtin.debug:
+        msg:
+          - "Mode: standalone"
+          - "OS: {{ os_family | default('rhel') }} {{ os_version }}"
+          - "Architecture: {{ target_arch }}"
+          - "Base packages: {{ base_image_packages | length }}"
+          - "Compute groups: {{ compute_images_dict | default({}) | length }}"
+          - "Repos: {{ repos | map(attribute='name') | list }}"
+
+# ── Omnia mode: parse Omnia config files ───────────────────────────────
+- name: Resolve packages from Omnia configuration
+  when: omnia_integration | default(false) | bool
+  block:
+    - name: Check if metadata file exists
+      ansible.builtin.stat:
+        path: "{{ metadata_file_path }}"
+      register: metadata_file_status
+
+    - name: Fail if metadata file is not present
+      ansible.builtin.fail:
+        msg: |
+          Metadata file {{ metadata_file_path }} not found.
+          Ensure local_repo.yml playbook was executed successfully.
+      when: not metadata_file_status.stat.exists
+
+    - name: Include functional groups config
+      ansible.builtin.include_vars:
+        file: "{{ functional_groups_config_path }}"
+        name: functional_groups_config
+      when: not enable_build_stream | default(false) | bool
+
+    - name: Include software config
+      ansible.builtin.include_vars:
+        file: "{{ software_config_file_path }}"
+        name: software_config
+      when: enable_build_stream | default(false) | bool
+
+    - name: Set cluster OS facts
+      ansible.builtin.set_fact:
+        os_version: "{{ software_config.cluster_os_version | default(functional_groups_config.cluster_os_version | default('10.0')) }}"
+        os_family: "{{ software_config.cluster_os_type | default(functional_groups_config.cluster_os_type | default('rhel')) }}"
+
+    - name: Fetch pulp endpoint repos
+      ansible.builtin.include_tasks: fetch_pulp_repos.yml
+      when: fetch_from_pulp | default(false) | bool
+
+    - name: Collect base image packages via Omnia module
+      omnia.image_builder.base_image_package_collector:
+        default_json_path: "{{ input_project_dir }}/config/{{ target_arch }}/{{ os_family }}/{{ os_version }}/default_packages.json"
+        additional_json_path: "{{ input_project_dir }}/config/{{ target_arch }}/{{ os_family }}/{{ os_version }}/additional_packages.json"
+        admin_debug_json_path: "{{ input_project_dir }}/config/{{ target_arch }}/{{ os_family }}/{{ os_version }}/admin_debug_packages.json"
+        software_config_path: "{{ software_config_file_path }}"
+      register: base_image_output
+
+    - name: Set base_image_packages from Omnia output
+      ansible.builtin.set_fact:
+        base_image_packages: "{{ base_image_output.base_image_packages }}"
+
+    - name: Parse functional groups
+      omnia.image_builder.functional_group_parser:
+        functional_groups_file: "{{ functional_groups_config_path }}"
+      register: functional_group_parser_list
+      when: not enable_build_stream | default(false) | bool
+
+    - name: Collect compute image packages via Omnia module
+      omnia.image_builder.image_package_collector:
+        functional_groups: "{{ functional_group_parser_list.functional_groups }}"
+        software_config_file: "{{ software_config_file_path }}"
+        input_project_dir: "{{ input_project_dir }}"
+        additional_json_path: "{{ input_project_dir }}/config/{{ target_arch }}/{{ os_family }}/{{ os_version }}/additional_packages.json"
+      register: compute_images_output
+
+    - name: Filter compute_images_dict for target architecture
+      ansible.builtin.set_fact:
+        compute_images_dict: >-
+          {{
+            compute_images_output.compute_images_dict
+            | dict2items
+            | selectattr('key', 'search', '_' + target_arch + '$')
+            | items2dict
+          }}

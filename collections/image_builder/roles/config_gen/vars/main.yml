@@ -1,0 +1,87 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+dir_permissions_644: "0644"
+dir_permissions_755: "0755"
+
+# Derived paths
+config_output_dir: "{{ work_dir }}/configs"
+build_log_dir: "{{ work_dir }}/logs"
+
+# Base image name (derived from os_family + arch)
+base_image_name: "{{ os_family | default('rhel') }}-{{ target_arch }}_base{{ image_name_suffix | default('') }}"
+
+# Default package groups per OS family
+_default_package_groups: >-
+  {{ {'rhel': ['Minimal Install', 'Development Tools'],
+      'almalinux': ['Minimal Install', 'Development Tools'],
+      'rocky': ['Minimal Install', 'Development Tools'],
+      'fedora': ['c-development', 'development-tools']
+     }[os_family | default('rhel')] | default([]) }}
+
+# Package manager backend mapping
+_pkg_manager_map:
+  rhel: dnf
+  almalinux: dnf
+  rocky: dnf
+  fedora: dnf
+  ubuntu: mmdebstrap
+  debian: mmdebstrap
+
+# Debian/Ubuntu specifics
+_deb_codename: >-
+  {{ {'24.04': 'noble', '22.04': 'jammy', '20.04': 'focal',
+      '12': 'bookworm', '11': 'bullseye'
+     }[os_version | default('24.04')] | default('noble') }}
+
+_deb_arch: "{{ 'arm64' if target_arch == 'aarch64' else 'amd64' }}"
+
+_deb_default_mirror: >-
+  {{ 'http://archive.ubuntu.com/ubuntu' if os_family == 'ubuntu'
+     else 'http://deb.debian.org/debian' }}
+
+_deb_kernel_pkg: >-
+  {{ 'linux-image-generic' if os_family == 'ubuntu' else 'linux-image-' + _deb_arch }}
+
+# Omnia integration vars
+software_config_file_path: "{{ input_project_dir }}/software_config.json"
+
+# Dracut commands for PXE-bootable images (RPM-based)
+_dracut_script: |
+  #!/usr/bin/bash
+  set -x
+  KVER=$(ls /lib/modules/ | sort -V | tail -1)
+  echo "Kernel version: $KVER"
+  if [ -z "$KVER" ]; then
+    echo "WARNING: No kernel modules found, skipping dracut"
+    exit 0
+  fi
+  dracut --add dmsquash-live --add livenet --add network-manager \
+    --install /usr/lib/systemd/systemd-sysroot-fstab-check \
+    --kver "$KVER" -N -f --logfile /tmp/dracut.log 2>&1
+  cat /tmp/dracut.log 2>/dev/null || true
+
+# Initramfs commands for PXE-bootable images (Debian-based)
+_initramfs_script: |
+  #!/bin/bash
+  set -x
+  export DEBIAN_FRONTEND=noninteractive
+  KVER=$(ls /lib/modules/ | sort -V | tail -1)
+  echo "Kernel version: $KVER"
+  if [ -z "$KVER" ]; then
+    echo "WARNING: No kernel modules found, skipping initramfs"
+    exit 0
+  fi
+  update-initramfs -c -k "$KVER" 2>&1 || update-initramfs -u -k "$KVER" 2>&1
+
+# Per-functional-group compute commands (mostly placeholders)
+_compute_commands:
+  os_x86_64: ["echo 'Minimal OS x86_64 compute'"]
+  os_aarch64: ["echo 'Minimal OS aarch64 compute'"]
+  login_node_x86_64: ["echo 'Login node x86_64 compute'"]
+  login_node_aarch64: ["echo 'Login node aarch64 compute'"]
+  slurm_control_node_x86_64: ["echo 'Slurm Control node x86_64 compute'"]
+  slurm_node_x86_64: ["echo 'Slurm node x86_64 compute'"]
+  slurm_node_aarch64: ["echo 'Slurm node aarch64 compute'"]
+  service_kube_node_x86_64: ["echo 'Service kube node x86_64 compute'"]

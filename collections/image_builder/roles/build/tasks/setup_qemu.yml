@@ -1,0 +1,35 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Register QEMU user-mode emulation via binfmt_misc for cross-arch builds.
+---
+
+- name: Check if target arch binfmt is already registered
+  ansible.builtin.stat:
+    path: "/proc/sys/fs/binfmt_misc/qemu-{{ target_arch }}"
+  register: binfmt_stat
+
+- name: Register QEMU binfmt_misc handlers
+  when: not (qemu_skip_if_registered | bool and binfmt_stat.stat.exists | default(false))
+  block:
+    - name: Register QEMU user-static binfmt handlers
+      ansible.builtin.command: >
+        podman run --rm --privileged {{ qemu_binfmt_image }} --reset -p yes
+      register: qemu_register
+      changed_when: true
+
+    - name: Verify binfmt is now registered
+      ansible.builtin.stat:
+        path: "/proc/sys/fs/binfmt_misc/qemu-{{ target_arch }}"
+      register: binfmt_verify
+
+    - name: Fail if binfmt registration failed
+      ansible.builtin.fail:
+        msg: |
+          Failed to register QEMU binfmt_misc handlers for {{ target_arch }}.
+          Ensure the host kernel supports binfmt_misc and podman is available.
+      when: not binfmt_verify.stat.exists
+
+- name: Display QEMU binfmt status
+  ansible.builtin.debug:
+    msg: "{{ target_arch }} QEMU binfmt_misc: {{ 'already registered' if binfmt_stat.stat.exists | default(false) else 'newly registered' }}"
