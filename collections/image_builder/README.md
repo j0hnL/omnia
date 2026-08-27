@@ -434,9 +434,11 @@ Otherwise, it runs as a privileged container with bind-mounted host directories.
 |---|---|---|
 | `publish_s3` | `false` | Enable S3 uploads of built images |
 | `s3_endpoint` | `""` | S3 endpoint URL (empty = auto-deploy local MinIO container) |
-| `s3_access_id` | `""` | S3 access key ID (pass via `-e` or vault) |
-| `s3_secret_key` | `""` | S3 secret access key (pass via `-e` or vault) |
 | `s3_bucket` | `"boot-images"` | S3 bucket name for image uploads |
+
+> **Note:** S3 credentials are passed to `image-thrillhouse` via the `S3_ACCESS` and `S3_SECRET`
+> environment variables. Set `s3_access_id` and `s3_secret_key` Ansible vars (via `-e` or vault)
+> and the `build` role forwards them automatically.
 
 #### Optional — MinIO auto-deploy
 

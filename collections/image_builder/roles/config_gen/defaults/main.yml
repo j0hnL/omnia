@@ -22,9 +22,9 @@ registry_tls_verify: true
 # ── S3 publishing ──────────────────────────────────────────────────────
 publish_s3: false
 s3_endpoint: ""
-s3_access_id: ""
-s3_secret_key: ""
 s3_bucket: "boot-images"
+# Note: S3 credentials are read from S3_ACCESS and S3_SECRET env vars
+# by image-thrillhouse, not from YAML config files.
 
 # ── Work directory ──────────────────────────────────────────────────────
 work_dir: "/var/lib/image-builder"

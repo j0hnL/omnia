@@ -91,6 +91,8 @@ class TestImageThrillhouseIntegration:
         assert "meta:" in content, "base template missing 'meta:' (image-thrillhouse schema)"
         assert "layer:" in content, "base template missing 'layer:' (image-thrillhouse schema)"
         assert "publish:" in content, "base template missing 'publish:' (image-thrillhouse schema)"
+        assert "commands:" in content, "base template missing 'commands:' (image-thrillhouse schema)"
+        assert "tls_verify" not in content, "base template uses tls_verify instead of tls-verify"
 
     def test_build_role_has_detect_builder(self):
         path = os.path.join(COLLECTION_ROOT, "roles", "build",

@@ -30,6 +30,7 @@ layer:
 {% elif _pkg_manager == 'mmdebstrap' %}
     options:
       suite: '{{ os_version_codename | default(_deb_codename) }}'
+      mirror: '{{ _repos[0].base_url if _repos | length > 0 else _deb_default_mirror }}'
       variant: minbase
 {% endif %}
   repos:
@@ -78,9 +79,9 @@ layer:
         - '{{ pkg }}'
 {% endfor %}
 {% if _fg_post_cmds | default([]) | length > 0 %}
-    run:
+    commands:
 {% for cmd in _fg_post_cmds %}
-      - '{{ cmd }}'
+      - script: '{{ cmd }}'
 {% endfor %}
 {% endif %}
 
@@ -93,13 +94,11 @@ publish:
 {% if registry_url | default('') | length > 0 %}
   - type: registry
     url: '{{ registry_url }}/{{ registry_ns }}'
-    tls_verify: {{ registry_tls_verify | default(true) | lower }}
+    tls-verify: {{ registry_tls_verify | default(true) | lower }}
 {% endif %}
 {% if publish_s3 | default(false) | bool and s3_endpoint | default('') | length > 0 %}
   - type: s3
-    endpoint: '{{ s3_endpoint }}'
+    url: '{{ s3_endpoint }}'
     bucket: '{{ s3_bucket | default("boot-images") }}'
     prefix: '{{ _fg_name }}/{{ _compute_image_name }}/'
-    access_key: '{{ s3_access_id }}'
-    secret_key: '{{ s3_secret_key }}'
 {% endif %}

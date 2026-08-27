@@ -93,23 +93,23 @@ class TestRoleStructure:
             assert os.path.isfile(path), f"defaults/ dir exists but main.yml missing in role: {role}"
 
 
+def _find_yaml_files():
+    """Find all YAML files in the collection (excluding .git, __pycache__, tests)."""
+    yaml_files = []
+    for root, _dirs, files in os.walk(COLLECTION_ROOT):
+        if any(skip in root for skip in [".git", "__pycache__", "tests"]):
+            continue
+        for f in files:
+            if f.endswith((".yml", ".yaml")) and not f.endswith(".j2"):
+                rel = os.path.relpath(os.path.join(root, f), COLLECTION_ROOT)
+                yaml_files.append(rel)
+    return yaml_files
+
+
 class TestYamlSyntax:
     """Validate all YAML files parse without errors."""
 
-    @staticmethod
-    def find_yaml_files():
-        yaml_files = []
-        for root, _dirs, files in os.walk(COLLECTION_ROOT):
-            # Skip .git, __pycache__, tests
-            if any(skip in root for skip in [".git", "__pycache__", "tests"]):
-                continue
-            for f in files:
-                if f.endswith((".yml", ".yaml")) and not f.endswith(".j2"):
-                    rel = os.path.relpath(os.path.join(root, f), COLLECTION_ROOT)
-                    yaml_files.append(rel)
-        return yaml_files
-
-    @pytest.mark.parametrize("yaml_file", find_yaml_files())
+    @pytest.mark.parametrize("yaml_file", _find_yaml_files())
     def test_yaml_parses(self, yaml_file):
         full = os.path.join(COLLECTION_ROOT, yaml_file)
         with open(full, encoding="utf-8") as f:

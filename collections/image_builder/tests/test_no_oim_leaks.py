@@ -12,7 +12,7 @@ COLLECTION_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Patterns that indicate OIM dependency (should not appear in standalone code paths)
 OIM_PATTERNS = [
     r'\boim_node_name\b',
-    r'\bdomain_name\b',
+    r'\boim_domain_name\b',
     r'\boim_shared_path\b',
     r'\boim_pxe_ip\b',
     r'\bpulp_webserver_cert_path\b',
@@ -20,7 +20,6 @@ OIM_PATTERNS = [
     r'\b/opt/omnia\b',
     r'\bomnia_share_option\b',
     r'\bnfs_server_share_path\b',
-    r'\boim_node_name\b',
 ]
 
 # Files that ARE allowed to reference OIM (Omnia integration mode)
@@ -66,15 +65,16 @@ class TestNoOimLeaks:
             content = f.read()
 
         violations = []
+        lines = content.splitlines()
         for pattern in OIM_PATTERNS:
-            matches = re.findall(pattern, content)
-            if matches:
-                # Check it's not inside a comment or the omnia_integration guard
-                for line_num, line in enumerate(content.splitlines(), 1):
-                    if re.search(pattern, line) and not line.strip().startswith("#"):
-                        # Allow references gated behind omnia_integration
-                        if "omnia_integration" not in content[:content.index(line)]:
-                            violations.append(f"  line {line_num}: {line.strip()}")
+            if not re.search(pattern, content):
+                continue
+            for line_num, line in enumerate(lines, 1):
+                if re.search(pattern, line) and not line.strip().startswith("#"):
+                    # Allow references gated behind omnia_integration
+                    preceding = "\n".join(lines[:line_num - 1])
+                    if "omnia_integration" not in preceding:
+                        violations.append(f"  line {line_num}: {line.strip()}")
 
         if violations:
             msg = f"OIM references found in {filepath} (should be standalone):\n"

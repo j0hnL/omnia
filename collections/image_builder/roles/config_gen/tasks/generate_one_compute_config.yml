@@ -13,7 +13,7 @@
 
 - name: "Resolve post-install commands for {{ _fg_name }}"
   ansible.builtin.set_fact:
-    _fg_post_cmds: "{{ _compute_commands[_fg_functional_group] | default([]) }}"
+    _fg_post_cmds: "{{ _compute_commands[_fg_functional_group + '_' + target_arch] | default(_compute_commands[_fg_functional_group] | default([])) }}"
 
 - name: "Generate config for {{ _fg_name }}"
   ansible.builtin.template:

@@ -25,6 +25,9 @@
         {% endif %}
         2>&1 | tee {{ build_log_dir }}/{{ _build_item.name }}.log
     executable: /bin/bash
+  environment:
+    S3_ACCESS: "{{ s3_access_id | default(omit) }}"
+    S3_SECRET: "{{ s3_secret_key | default(omit) }}"
   register: _build_result_bin
   changed_when: true
   retries: "{{ build_retries | default(3) }}"
@@ -42,6 +45,10 @@
         -v /var/lib/containers:/var/lib/containers:z \
         {% if ca_cert_path | default('') | length > 0 %}
         -v {{ ca_cert_path }}:/etc/pki/ca-trust/source/anchors/ca.crt:ro \
+        {% endif %}
+        {% if s3_access_id | default('') | length > 0 %}
+        -e S3_ACCESS={{ s3_access_id }} \
+        -e S3_SECRET={{ s3_secret_key | default('') }} \
         {% endif %}
         {{ image_thrillhouse_container }} \
         build \
