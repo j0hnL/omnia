@@ -72,6 +72,60 @@ output/
 
 Serve these files over HTTP and you have PXE-bootable images.
 
+## Why This Tool
+
+Building OS images for bare-metal clusters is a problem most teams solve with
+shell scripts, golden images, or heavyweight provisioning platforms. Each
+approach has real costs:
+
+- **Shell scripts** work until someone else needs to run them, or the build
+  host changes, or you need a different distro. They're fragile, untestable,
+  and tied to the machine they were written on.
+- **Golden images** (snapshot a reference node) can't be audited, reproduced,
+  or version-controlled. When the engineer who built them leaves, the image
+  becomes a black box.
+- **Full provisioners** (Foreman, Cobbler, MAAS) require their own databases,
+  services, and operational overhead. They solve provisioning, deployment,
+  and lifecycle management all at once — overkill when you just need to
+  produce an image.
+
+This collection sits in the gap between those options. It's a single Ansible
+playbook that takes a YAML file and produces a bootable squashfs image. No
+infrastructure to deploy, no host OS dependencies beyond `podman` and
+`buildah`, and nothing to operate after the build finishes.
+
+### If you use Omnia
+
+The collection plugs directly into Omnia's software catalog. Point it at your
+`software_config.json` and it reads your OS, packages, and per-role definitions
+automatically — no manual package lists. It replaces Omnia's built-in image
+builder with broader OS support (seven distros instead of RHEL-only),
+containerized builds (no host-installed `dnf` or `mksquashfs`), and
+cross-architecture ARM builds without dedicated ARM hardware. See
+[Using with Omnia](#using-with-omnia) for setup details.
+
+### If you don't use Omnia
+
+The collection works standalone with no Omnia dependency. You provide three
+things — `os_family`, `repos`, and `base_image_packages` — in a YAML file,
+and get a PXE-bootable image. If you already use Ansible for cluster
+management, this slots into your existing playbooks and inventory. If you
+don't, it still runs as a one-shot command. The `examples/` directory has
+ready-to-use configurations for Rocky, AlmaLinux, Fedora, Ubuntu, Debian,
+and Wolfi.
+
+### How it compares
+
+| Tool | What it does | What it doesn't do |
+|---|---|---|
+| **This collection** | Declarative YAML to squashfs, any host OS, 7 distros, ARM cross-build, offline, CI-ready | Not a provisioner — doesn't manage PXE servers, DHCP, or node lifecycle |
+| **Warewulf** | Full provisioning stack with image builds | Tightly coupled — can't use the image builder without the rest of Warewulf |
+| **lorax / livemedia-creator** | Official Fedora/RHEL image tooling | Fedora/RHEL only, must run on a matching host OS |
+| **live-build** | Debian/Ubuntu live images | Debian only |
+| **Packer** | VM images (QEMU, VMware, cloud) | VM-oriented — not designed for bare-metal PXE squashfs |
+| **Foreman / Cobbler** | Full lifecycle provisioning | Heavy infrastructure (databases, services, web UI) |
+| **Shell scripts** | Whatever you write | Fragile, untestable, non-portable, undocumented |
+
 ## Supported Operating Systems
 
 | OS | `os_family` | Package manager | Build type | Example file |

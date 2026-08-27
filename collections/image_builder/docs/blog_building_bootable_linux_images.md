@@ -179,6 +179,14 @@ The "golden image" problem is solved. Image definitions are declarative YAML fil
 
 GPU node images with CUDA and NVIDIA drivers pre-baked, ARM64 cross-builds for Grace Hopper deployments without ARM build hardware, and layered images that let you maintain a single base while customizing per-workload (training nodes vs. inference nodes vs. data preprocessing nodes).
 
+### For Omnia Users
+
+If you already run Dell Omnia, the collection reads your `software_config.json` directly — no manual package lists. It replaces Omnia's built-in image builder with broader OS support (seven distros instead of RHEL-only), fully containerized builds (no host-installed `dnf`, `mksquashfs`, or `mc`), and cross-architecture ARM builds that don't require dedicated ARM hardware. The build process needs only `podman` and `buildah` on the host; everything else runs in containers. And because it's an Ansible collection, it fits into the same operational model you're already using for cluster management.
+
+### For Teams Without Omnia
+
+The collection works as a standalone tool with zero Omnia dependency. If you need to produce PXE-bootable images — or just squashfs root filesystems for any purpose — and you don't want to deploy Warewulf, Foreman, or a custom script pile, this is the lightweight option. You provide a YAML file with your OS, repos, and packages. The collection handles the rest: package installation, initramfs generation, squashfs compression, and optional publishing to registries or S3. It runs on any Linux machine, builds any of seven distros regardless of the host OS, and produces verifiable output with checksums and build manifests.
+
 ### For the Open-Source Community
 
 Nothing like this exists as a standalone, portable tool. The closest alternatives are:
