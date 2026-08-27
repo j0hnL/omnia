@@ -540,55 +540,40 @@ repos:
 ### Tested performance
 
 Build host: **Dell PowerEdge** with 2× Intel Xeon Gold 6330 (56 cores / 112 threads @ 2.0 GHz),
-377 GB RAM, RHEL 10.0, NVMe storage. Repos accessed over 10 Gbps network.
+377 GB RAM, RHEL 10.2, NVMe storage. image-thrillhouse v0.0.20 running as a container via
+podman 5.8.2 / buildah 1.43.2.
 
-#### x86_64 image builds
+#### x86_64 image builds (measured)
 
-| OS | Build time | rootfs | vmlinuz | initramfs |
+| OS | Install | Dracut | Total | Squashfs |
 |---|---|---|---|---|
-| **Rocky 10** | **3m 54s** | 1.1 GB | 16 MB | 219 MB |
-| **AlmaLinux 10** | **3m 31s** | 1.1 GB | 16 MB | 220 MB |
-| **RHEL 10** | **3m 39s** | 1.1 GB | 16 MB | 220 MB |
-| **Fedora 42** | **3m 38s** | 593 MB | 18 MB | 49 MB |
+| **Rocky 10** | 4m 36s | 59s | **6m 44s** | 868 MB |
+| **AlmaLinux 10** | 3m 48s | 60s | **5m 55s** | 884 MB |
 
-All builds include the packages listed in `base_image_packages` plus
-OS-appropriate package groups. Times include package download, install,
-dracut initramfs generation, buildah commit, and squashfs export.
-Container images are cached for all runs.
+All builds include 14 packages (`kernel`, `dracut`, `NetworkManager`, `openssh-server`,
+`chrony`, `nfs-utils`, `rdma-core`, etc.) plus "Minimal Install" and "Development Tools"
+package groups (420 total packages installed). Times are wall-clock from
+`image-thrillhouse build` start to finish, including package download, install, dracut
+initramfs generation, buildah commit, and squashfs export. Repos accessed over network
+(not cached). Container images are pre-pulled.
 
-RHEL/Rocky/AlmaLinux use "Minimal Install" + "Development Tools" groups.
-Fedora uses `c-development` + `development-tools` groups (group IDs
-instead of display names). All OS families produce complete
-PXE-bootable images with kernel, initramfs, and rootfs.
+*Note: Fedora 42 builds are supported but were not benchmarked due to Fedora's
+mirror-redirection service requiring metalink resolution inside the build container.
+Use a direct mirror URL or a local repo mirror for Fedora builds.*
 
-#### aarch64 cross-build (on same x86_64 host, no ARM hardware)
+#### aarch64 cross-build
 
-| OS | Build time | Image size |
-|---|---|---|
-| **Rocky 9.5** | **28m 29s** | 2.39 GB (buildah image) |
+Cross-builds add QEMU user-mode emulation for ARM64 binaries. RPM post-install
+scriptlets (depmod, kernel-install, ldconfig) and dracut run under emulation at
+~4× slower speed. Package download and unpacking run at native x86_64 speed.
 
-Cross-builds are ~4× slower than native x86_64 builds because RPM post-install
-scriptlets (depmod, kernel-install, ldconfig) run under QEMU aarch64 emulation.
-This is still significantly faster than the alternative of maintaining a dedicated
-remote ARM build node with NFS and SSH.
+#### Offline/air-gapped builds
 
-#### Argo Workflow (Kubernetes, same host)
+The `repo_mirror` role syncs upstream RPMs to a local nginx-served mirror. First
+run requires network access. Subsequent rebuilds use only the cached local mirror
+with zero network access.
 
-| Method | Build time | Notes |
-|---|---|---|
-| **Argo Workflow** | **4m 28s** | k3s v1.35.5, Argo v4.0.5, Rocky 10, privileged pod |
-
-#### Offline/air-gapped builds (using local RPM mirror)
-
-| OS | First run (sync + build) | Cached rebuild (fully offline) |
-|---|---|---|
-| **AlmaLinux 10** | 6m 42s | **2m 34s** |
-
-First run syncs all RPMs from upstream repos (including group metadata) and creates
-a local nginx-served mirror. Cached rebuilds use only the local mirror — **zero
-network access required**.
-
-**Disk space**: Each build uses ~3 GB (installroot + tar + squashfs). The offline
+**Disk space**: Each build uses ~3 GB (installroot + squashfs). The offline
 mirror adds ~9 GB for EL repos. Ensure at least **15 GB free** for direct builds
 or **25 GB free** for offline builds.
 

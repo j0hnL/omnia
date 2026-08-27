@@ -163,7 +163,7 @@ kubectl apply --server-side -k argo/
 argo submit argo/workflow.yaml -n image-builder --watch
 ```
 
-The workflow runs a privileged container (required for `buildah` and `mksquashfs`), mounts a PVC for workspace and output, and completes in approximately 4.5 minutes. The ConfigMap holds all build configuration — OS, repos, packages — as a single YAML file.
+The workflow runs a privileged container (required for `buildah`), mounts a PVC for workspace and output, and builds a complete Rocky/AlmaLinux image in under 7 minutes. The ConfigMap holds all build configuration — OS, repos, packages — as a single YAML file.
 
 RBAC is scoped to the `image-builder` namespace with minimal permissions: read-only access to pods, configmaps, and PVCs, plus write access to Argo's `workflowtaskresults`. No cluster-admin, no cross-namespace access.
 
