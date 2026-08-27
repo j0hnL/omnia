@@ -1,6 +1,6 @@
 ---
 namespace: omnia
-name: image_builder
+name: open_image_builder
 version: 1.0.0
 readme: README.md
 authors:
@@ -12,7 +12,7 @@ description: >
   engine. Produces base and per-functional-group compute images, publishes to
   OCI registries, S3 (MinIO or PowerScale), and local squashfs exports.
   Supports x86_64 and aarch64 architectures, multiple OS families (RHEL,
-  Rocky, AlmaLinux, Fedora, Ubuntu, Debian), offline mode, and cross-builds.
+  Rocky, AlmaLinux, Fedora, Ubuntu, Debian, Wolfi), offline mode, and cross-builds.
 license:
   - Apache-2.0
 license_file: LICENSE

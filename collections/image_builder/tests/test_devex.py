@@ -126,9 +126,9 @@ class TestImageThrillhouseIntegration:
         path = os.path.join(COLLECTION_ROOT, "playbooks", "build.yml")
         with open(path) as f:
             content = f.read()
-        assert "omnia.image_builder.config_gen" in content, \
+        assert "omnia.open_image_builder.config_gen" in content, \
             "build.yml missing config_gen role"
-        assert "omnia.image_builder.build" in content, \
+        assert "omnia.open_image_builder.build" in content, \
             "build.yml missing build role"
 
 

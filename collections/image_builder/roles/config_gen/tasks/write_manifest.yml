@@ -30,7 +30,7 @@
 - name: Write build manifest
   ansible.builtin.copy:
     content: |
-      # Auto-generated build manifest — omnia.image_builder config_gen
+      # Auto-generated build manifest — omnia.open_image_builder config_gen
       # Build order matters: base image first, then compute images.
       ---
       os_family: "{{ os_family | default('rhel') }}"

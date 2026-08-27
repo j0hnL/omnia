@@ -1,7 +1,7 @@
 # Fedora 44 x86_64 — latest Fedora with development tools
 #
 # Build:
-#   ansible-playbook omnia.image_builder.build -e @examples/fedora_x86_64.yml
+#   ansible-playbook omnia.open_image_builder.build -e @examples/fedora_x86_64.yml
 #
 # NOTE: Fedora builds require direct mirror baseurl — Fedora's metalink
 # redirection does not work inside build containers. The URLs below use

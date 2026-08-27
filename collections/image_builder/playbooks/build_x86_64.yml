@@ -6,17 +6,17 @@
 # the unified build playbook using image-thrillhouse.
 #
 # Usage (standalone — no Omnia needed):
-#   ansible-playbook omnia.image_builder.build_x86_64 -e @my_image_vars.yml
+#   ansible-playbook omnia.open_image_builder.build_x86_64 -e @my_image_vars.yml
 #
 # Usage (fully offline — create local repo mirror first):
-#   ansible-playbook omnia.image_builder.build_x86_64 \
+#   ansible-playbook omnia.open_image_builder.build_x86_64 \
 #     -e @my_image_vars.yml -e use_local_mirror=true
 #
 # Usage (with Omnia integration):
-#   ansible-playbook omnia.image_builder.build_x86_64 \
+#   ansible-playbook omnia.open_image_builder.build_x86_64 \
 #     -e omnia_integration=true -e registry_url=myregistry:5000
 #
-# Prefer: ansible-playbook omnia.image_builder.build -e target_arch=x86_64
+# Prefer: ansible-playbook omnia.open_image_builder.build -e target_arch=x86_64
 ---
 
 - name: Prepare storage and local mirror (x86_64)
@@ -26,9 +26,9 @@
   vars:
     target_arch: "x86_64"
   roles:
-    - role: omnia.image_builder.repo_mirror
+    - role: omnia.open_image_builder.repo_mirror
       when: use_local_mirror | default(false) | bool
-    - role: omnia.image_builder.local_storage
+    - role: omnia.open_image_builder.local_storage
 
 - name: Generate image-thrillhouse configs (x86_64)
   hosts: localhost
@@ -37,7 +37,7 @@
   vars:
     target_arch: "x86_64"
   roles:
-    - role: omnia.image_builder.config_gen
+    - role: omnia.open_image_builder.config_gen
 
 - name: Build x86_64 images with image-thrillhouse
   hosts: "{{ build_host | default('localhost') }}"
@@ -45,7 +45,7 @@
   vars:
     target_arch: "x86_64"
   roles:
-    - role: omnia.image_builder.build
+    - role: omnia.open_image_builder.build
 
 - name: Build completion
   hosts: localhost

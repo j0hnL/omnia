@@ -147,7 +147,7 @@
       when: fetch_from_pulp | default(false) | bool
 
     - name: Collect base image packages via Omnia module
-      omnia.image_builder.base_image_package_collector:
+      omnia.open_image_builder.base_image_package_collector:
         default_json_path: "{{ input_project_dir }}/config/{{ target_arch }}/{{ os_family }}/{{ os_version }}/default_packages.json"
         additional_json_path: "{{ input_project_dir }}/config/{{ target_arch }}/{{ os_family }}/{{ os_version }}/additional_packages.json"
         admin_debug_json_path: "{{ input_project_dir }}/config/{{ target_arch }}/{{ os_family }}/{{ os_version }}/admin_debug_packages.json"
@@ -159,13 +159,13 @@
         base_image_packages: "{{ base_image_output.base_image_packages }}"
 
     - name: Parse functional groups
-      omnia.image_builder.functional_group_parser:
+      omnia.open_image_builder.functional_group_parser:
         functional_groups_file: "{{ functional_groups_config_path }}"
       register: functional_group_parser_list
       when: not enable_build_stream | default(false) | bool
 
     - name: Collect compute image packages via Omnia module
-      omnia.image_builder.image_package_collector:
+      omnia.open_image_builder.image_package_collector:
         functional_groups: "{{ functional_group_parser_list.functional_groups }}"
         software_config_file: "{{ software_config_file_path }}"
         input_project_dir: "{{ input_project_dir }}"

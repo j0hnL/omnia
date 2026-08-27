@@ -1,9 +1,9 @@
-# Omnia Image Builder
+# Omnia Open Image Builder
 
 Build bootable Linux OS images with a single command. Uses [OpenCHAMI image-thrillhouse](https://github.com/OpenCHAMI/image-thrillhouse) as the core build engine. Supports RHEL, AlmaLinux, Rocky Linux, Fedora, Ubuntu, Debian, and Wolfi. Works on any Linux machine with `podman` and `buildah`.
 
 ```bash
-ansible-playbook omnia.image_builder.build -e @examples/rocky_x86_64.yml
+ansible-playbook omnia.open_image_builder.build -e @examples/rocky_x86_64.yml
 ```
 
 ## Getting Started
@@ -12,11 +12,11 @@ ansible-playbook omnia.image_builder.build -e @examples/rocky_x86_64.yml
 
 ```bash
 # From Galaxy
-ansible-galaxy collection install omnia.image_builder
+ansible-galaxy collection install omnia.open_image_builder
 
 # From source
 cd collections/image_builder && ansible-galaxy collection build
-ansible-galaxy collection install omnia-image_builder-1.0.0.tar.gz
+ansible-galaxy collection install omnia-open_image_builder-1.0.0.tar.gz
 ```
 
 ### Prerequisites
@@ -57,7 +57,7 @@ base_image_packages:
 **Step 2.** Build:
 
 ```bash
-ansible-playbook omnia.image_builder.build -e @my_images.yml
+ansible-playbook omnia.open_image_builder.build -e @my_images.yml
 ```
 
 **Step 3.** Your images are at `/var/lib/image-builder/output/`:
@@ -160,7 +160,7 @@ and installs packages via `apk add` commands.
 ### I just want a basic bootable image
 
 ```bash
-ansible-playbook omnia.image_builder.build -e @examples/rocky_x86_64.yml
+ansible-playbook omnia.open_image_builder.build -e @examples/rocky_x86_64.yml
 ```
 
 ### I want an HPC Slurm cluster
@@ -239,7 +239,7 @@ compute_images_dict:
 ```
 
 ```bash
-ansible-playbook omnia.image_builder.build -e @slurm_hpc_cluster.yml
+ansible-playbook omnia.open_image_builder.build -e @slurm_hpc_cluster.yml
 ```
 
 Output:
@@ -255,14 +255,14 @@ output/
 ### I want ARM images built on my x86_64 machine
 
 ```bash
-ansible-playbook omnia.image_builder.build_aarch64 \
+ansible-playbook omnia.open_image_builder.build_aarch64 \
   -e @examples/standalone_aarch64_crossbuild.yml
 ```
 
 ### I need fully offline/air-gapped builds
 
 ```bash
-ansible-playbook omnia.image_builder.build_x86_64 \
+ansible-playbook omnia.open_image_builder.build_x86_64 \
   -e @examples/offline_x86_64.yml
 ```
 
@@ -276,7 +276,7 @@ s3_endpoint: "https://s3.example.com"        # empty = auto-deploy MinIO
 ```bash
 # Pass S3 credentials via environment variables (never put them in YAML files)
 S3_ACCESS=your_access_key S3_SECRET=your_secret_key \
-  ansible-playbook omnia.image_builder.build -e @my_images.yml -e publish_s3=true
+  ansible-playbook omnia.open_image_builder.build -e @my_images.yml -e publish_s3=true
 ```
 
 > **Security**: S3 credentials are passed to `image-thrillhouse` via `S3_ACCESS` and
@@ -294,7 +294,7 @@ registry_ns: "my-cluster"
 ### I want to use this inside an Omnia deployment
 
 ```bash
-ansible-playbook omnia.image_builder.build_x86_64 \
+ansible-playbook omnia.open_image_builder.build_x86_64 \
   -e omnia_integration=true \
   -e input_project_dir=/opt/omnia/input
 ```
@@ -305,7 +305,7 @@ The `argo/` directory contains production-ready Kubernetes manifests tested
 on k3s + Argo Workflows v4.0.5.
 
 ```bash
-podman build -t ghcr.io/dell/omnia-image-builder:latest -f argo/Containerfile .
+podman build -t ghcr.io/dell/omnia-open-image-builder:latest -f argo/Containerfile .
 kubectl apply --server-side -k argo/
 argo submit argo/workflow.yaml -n image-builder --watch
 ```
@@ -448,7 +448,7 @@ only changes the package architecture, not the dnf process itself.
 ### Offline / air-gapped builds
 
 ```bash
-ansible-playbook omnia.image_builder.build_x86_64 \
+ansible-playbook omnia.open_image_builder.build_x86_64 \
   -e @examples/offline_x86_64.yml
 ```
 
@@ -705,7 +705,7 @@ If you have an Omnia deployment with `software_config.json`, the collection
 reads it directly — no manual package lists needed:
 
 ```bash
-ansible-playbook omnia.image_builder.build_x86_64 \
+ansible-playbook omnia.open_image_builder.build_x86_64 \
   -e omnia_integration=true \
   -e input_project_dir=/opt/omnia/input
 ```
@@ -732,7 +732,7 @@ Omnia config. Add your repos and build:
 
 ```bash
 # Edit image_builder_vars.yml to add your repos, then:
-ansible-playbook omnia.image_builder.build_x86_64 -e @image_builder_vars.yml
+ansible-playbook omnia.open_image_builder.build_x86_64 -e @image_builder_vars.yml
 ```
 
 Options:

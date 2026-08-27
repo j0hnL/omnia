@@ -1,4 +1,4 @@
-# Building Bootable Linux Images in One Command: Inside Omnia Image Builder
+# Building Bootable Linux Images in One Command: Inside Omnia Open Image Builder
 
 *How we built an Ansible collection that turns seven Linux distros into PXE-bootable HPC and AI cluster images — with zero host dependencies, cross-architecture support, and air-gapped builds.*
 
@@ -18,7 +18,7 @@ In most organizations, this process looks like one of these:
 
 - **The heavyweight provisioner.** Deploy Foreman, Cobbler, or MAAS — full lifecycle provisioning platforms that require their own infrastructure, databases, and operational overhead. Overkill when you just need to produce an image.
 
-We built `omnia.image_builder` because we wanted something that didn't exist: a tool that builds production-quality PXE-bootable images from a declarative YAML file, runs on any Linux machine, requires nothing installed beyond `podman` and Ansible, and supports every major distro, architecture, and deployment scenario HPC and AI clusters actually encounter.
+We built `omnia.open_image_builder` because we wanted something that didn't exist: a tool that builds production-quality PXE-bootable images from a declarative YAML file, runs on any Linux machine, requires nothing installed beyond `podman` and Ansible, and supports every major distro, architecture, and deployment scenario HPC and AI clusters actually encounter.
 
 ## What We Built
 
@@ -81,13 +81,13 @@ The `config_gen` role translates your Ansible variables into image-thrillhouse's
 
 ```bash
 # Rocky Linux 10
-ansible-playbook omnia.image_builder.build_x86_64 -e @rocky.yml
+ansible-playbook omnia.open_image_builder.build_x86_64 -e @rocky.yml
 
 # Ubuntu 24.04
-ansible-playbook omnia.image_builder.build_x86_64 -e @ubuntu.yml
+ansible-playbook omnia.open_image_builder.build_x86_64 -e @ubuntu.yml
 
 # RHEL 9.5 (with subscription repos)
-ansible-playbook omnia.image_builder.build_x86_64 -e @rhel.yml
+ansible-playbook omnia.open_image_builder.build_x86_64 -e @rhel.yml
 ```
 
 The collection handles the differences automatically. RPM-based distros (RHEL, AlmaLinux, Rocky, Fedora) use `dnf` + `dracut`. Debian-based distros (Ubuntu, Debian) use `mmdebstrap` + `update-initramfs`. Wolfi uses a parent build from `wolfi-base` with `apk add` commands. The user provides the same YAML structure regardless — `os_family`, `os_version`, `repos`, `base_image_packages` — and the collection selects the right package manager and initramfs tool via image-thrillhouse.
@@ -108,7 +108,7 @@ The download phase runs at native x86_64 speed (the dnf process itself is x86_64
 
 ```bash
 # Build ARM64 images on your x86_64 workstation
-ansible-playbook omnia.image_builder.build_aarch64 \
+ansible-playbook omnia.open_image_builder.build_aarch64 \
   -e @examples/standalone_aarch64_crossbuild.yml
 ```
 
@@ -147,7 +147,7 @@ Government, defense, and high-security HPC environments can't reach the internet
 
 ```bash
 # Phase 1: Sync packages (requires internet)
-ansible-playbook omnia.image_builder.build_x86_64 \
+ansible-playbook omnia.open_image_builder.build_x86_64 \
   -e @examples/offline_x86_64.yml -e use_local_mirror=true
 
 # Phase 2: Build images (fully offline)
@@ -160,7 +160,7 @@ The collection ships with production-ready Argo Workflows manifests for Kubernet
 
 ```bash
 # One-time setup on a k3s cluster
-podman build -t ghcr.io/dell/omnia-image-builder:latest -f argo/Containerfile .
+podman build -t ghcr.io/dell/omnia-open-image-builder:latest -f argo/Containerfile .
 kubectl apply --server-side -k argo/
 argo submit argo/workflow.yaml -n image-builder --watch
 ```
@@ -199,16 +199,16 @@ Nothing like this exists as a standalone, portable tool. The closest alternative
 | **Foreman/Cobbler** | Full provisioning platforms with heavy operational overhead |
 | **Packer** | VM images, not bare-metal PXE images |
 
-`omnia.image_builder` fills the gap between "write your own shell scripts" and "deploy an entire provisioning platform." It's an Ansible collection — install it, write a YAML file, run a playbook. If you already use Ansible for cluster management (and in HPC, you almost certainly do), this slots directly into your existing workflow.
+`omnia.open_image_builder` fills the gap between "write your own shell scripts" and "deploy an entire provisioning platform." It's an Ansible collection — install it, write a YAML file, run a playbook. If you already use Ansible for cluster management (and in HPC, you almost certainly do), this slots directly into your existing workflow.
 
 ## Try It
 
 ```bash
 # Install
-ansible-galaxy collection install omnia.image_builder
+ansible-galaxy collection install omnia.open_image_builder
 
 # Build a Rocky Linux 10 image
-ansible-playbook omnia.image_builder.build_x86_64 \
+ansible-playbook omnia.open_image_builder.build_x86_64 \
   -e @examples/standalone_x86_64.yml
 
 # Verify it
@@ -219,4 +219,4 @@ The images are at `/var/lib/image-builder/output/`. Serve them over HTTP, point 
 
 ---
 
-*The `omnia.image_builder` collection is part of the [Omnia](https://github.com/dell/omnia) project by Dell Technologies. It works standalone or integrated with the broader Omnia HPC/AI cluster management platform. Apache 2.0 licensed.*
+*The `omnia.open_image_builder` collection is part of the [Omnia](https://github.com/dell/omnia) project by Dell Technologies. It works standalone or integrated with the broader Omnia HPC/AI cluster management platform. Apache 2.0 licensed.*

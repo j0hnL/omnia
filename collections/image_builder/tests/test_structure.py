@@ -23,8 +23,8 @@ class TestGalaxyYml:
     def test_namespace_is_omnia(self):
         assert self.galaxy["namespace"] == "omnia"
 
-    def test_name_is_image_builder(self):
-        assert self.galaxy["name"] == "image_builder"
+    def test_name_is_open_image_builder(self):
+        assert self.galaxy["name"] == "open_image_builder"
 
     def test_version_is_semver(self):
         parts = self.galaxy["version"].split(".")

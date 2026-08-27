@@ -1,7 +1,7 @@
 # Rocky Linux 10 x86_64 — base bootable image
 #
 # Build:
-#   ansible-playbook omnia.image_builder.build -e @examples/rocky_x86_64.yml
+#   ansible-playbook omnia.open_image_builder.build -e @examples/rocky_x86_64.yml
 ---
 os_family: rocky
 os_version: "10.0"

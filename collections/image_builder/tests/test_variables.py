@@ -152,8 +152,8 @@ class TestPlaybookVariables:
     def test_playbook_has_config_gen_or_local_storage(self, playbook):
         with open(os.path.join(COLLECTION_ROOT, playbook)) as f:
             content = f.read()
-        has_config_gen = "omnia.image_builder.config_gen" in content
-        has_local_storage = "omnia.image_builder.local_storage" in content
+        has_config_gen = "omnia.open_image_builder.config_gen" in content
+        has_local_storage = "omnia.open_image_builder.local_storage" in content
         assert has_config_gen or has_local_storage, \
             f"{playbook} missing config_gen or local_storage role"
 

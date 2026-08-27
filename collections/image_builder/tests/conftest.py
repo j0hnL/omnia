@@ -1,4 +1,4 @@
-"""Shared fixtures for omnia.image_builder tests."""
+"""Shared fixtures for omnia.open_image_builder tests."""
 import os
 import sys
 import pytest
