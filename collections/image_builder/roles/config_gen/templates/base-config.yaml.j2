@@ -9,7 +9,7 @@ meta:
   tags:
     - '{{ os_version }}'
 {% if os_family | default('rhel') == 'wolfi' %}
-  from: '{{ wolfi_base_image | default(_wolfi_base_image) }}'
+  from: '{{ wolfi_base_image if wolfi_base_image else _wolfi_base_image }}'
 {% else %}
   from: scratch
 {% endif %}
