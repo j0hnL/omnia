@@ -12,6 +12,12 @@
 - name: Register QEMU binfmt_misc handlers
   when: not (qemu_skip_if_registered | bool and binfmt_stat.stat.exists | default(false))
   block:
+    - name: Verify podman is available for QEMU setup
+      ansible.builtin.command: podman --version
+      changed_when: false
+      register: _podman_check
+      failed_when: _podman_check.rc != 0
+
     - name: Register QEMU user-static binfmt handlers
       ansible.builtin.command: >
         podman run --rm --privileged {{ qemu_binfmt_image }} --reset -p yes

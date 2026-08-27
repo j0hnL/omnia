@@ -47,8 +47,8 @@
         -v {{ ca_cert_path }}:/etc/pki/ca-trust/source/anchors/ca.crt:ro \
         {% endif %}
         {% if s3_access_id | default('') | length > 0 %}
-        -e S3_ACCESS={{ s3_access_id }} \
-        -e S3_SECRET={{ s3_secret_key | default('') }} \
+        -e "S3_ACCESS={{ s3_access_id }}" \
+        -e "S3_SECRET={{ s3_secret_key | default('') }}" \
         {% endif %}
         {{ image_thrillhouse_container }} \
         build \
@@ -79,6 +79,6 @@
 - name: "Export {{ _build_item.name }} — extract kernel and initramfs for PXE"
   ansible.builtin.include_tasks: export_pxe_artifacts.yml
   vars:
-    _export_image_name: "localhost/{{ registry_ns | default('images') }}/{{ _build_item.name }}:{{ os_version }}"
+    _export_image_name: "localhost/{{ _build_item.name }}:{{ os_version }}"
     _export_group_name: "{{ _build_item.name }}"
     _export_label: "{{ _build_item.name }}"

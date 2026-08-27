@@ -38,7 +38,7 @@
       target_arch: "{{ target_arch }}"
       base_image_name: "{{ base_image_name }}"
       configs:
-      {{ _build_configs | to_nice_yaml(indent=2) | indent(2, false) }}
+      {{ _build_configs | to_nice_yaml(indent=2) | indent(2, true) }}
     dest: "{{ config_output_dir }}/build_manifest.yml"
     mode: "{{ dir_permissions_644 }}"
 

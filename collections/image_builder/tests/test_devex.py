@@ -92,7 +92,13 @@ class TestImageThrillhouseIntegration:
         assert "layer:" in content, "base template missing 'layer:' (image-thrillhouse schema)"
         assert "publish:" in content, "base template missing 'publish:' (image-thrillhouse schema)"
         assert "commands:" in content, "base template missing 'commands:' (image-thrillhouse schema)"
-        assert "tls_verify" not in content, "base template uses tls_verify instead of tls-verify"
+        assert "groups:" in content, "base template missing 'groups:' for DNF package groups"
+        assert "'@" not in content, "base template uses @-prefixed groups instead of groups: field"
+        # Verify the YAML key uses tls-verify (hyphen), not tls_verify (underscore)
+        # The Jinja2 variable registry_tls_verify correctly uses underscores
+        import re
+        assert not re.search(r'^\s+tls_verify:', content, re.MULTILINE), \
+            "base template uses tls_verify: instead of tls-verify:"
 
     def test_build_role_has_detect_builder(self):
         path = os.path.join(COLLECTION_ROOT, "roles", "build",

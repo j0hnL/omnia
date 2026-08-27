@@ -12,7 +12,7 @@ meta:
 {% if registry_url | default('') | length > 0 %}
   from: '{{ registry_url }}/{{ registry_ns }}/{{ _base_image_name }}:{{ os_version }}'
 {% else %}
-  from: 'localhost/{{ registry_ns }}/{{ _base_image_name }}:{{ os_version }}'
+  from: 'localhost/{{ _base_image_name }}:{{ os_version }}'
 {% endif %}
 
 layer:

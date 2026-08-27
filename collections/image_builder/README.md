@@ -79,13 +79,13 @@ Serve these files over HTTP and you have PXE-bootable images.
 | **RHEL** 9/10 | `rhel` | dnf | `examples/standalone_x86_64.yml` |
 | **AlmaLinux** 9/10 | `almalinux` | dnf | `examples/almalinux_x86_64.yml` |
 | **Rocky Linux** 9/10 | `rocky` | dnf | `examples/rocky_x86_64.yml` |
-| **Fedora** 41/42 | `fedora` | dnf5 | `examples/fedora_x86_64.yml` |
-| **Ubuntu** 24.04/22.04 | `ubuntu` | apt/debootstrap | `examples/ubuntu_x86_64.yml` |
-| **Debian** 12/11 | `debian` | apt/debootstrap | `examples/debian_x86_64.yml` |
+| **Fedora** 41/42 | `fedora` | dnf | `examples/fedora_x86_64.yml` |
+| **Ubuntu** 24.04/22.04 | `ubuntu` | mmdebstrap | `examples/ubuntu_x86_64.yml` |
+| **Debian** 12/11 | `debian` | mmdebstrap | `examples/debian_x86_64.yml` |
 
 The collection automatically selects the correct package manager, container
 image, package groups, and initramfs tooling for each OS family. RPM-based
-distros use `dnf` + `dracut`; Debian-based distros use `debootstrap` + `apt` + `update-initramfs`.
+distros use `dnf` + `dracut`; Debian-based distros use `mmdebstrap` + `update-initramfs`.
 
 ## Examples by Use Case
 
@@ -202,13 +202,19 @@ ansible-playbook omnia.image_builder.build_x86_64 \
 
 ```yaml
 publish_s3: true
-s3_endpoint: ""                              # empty = auto-deploy MinIO
-s3_access_id: "{{ vault_s3_access_id }}"
-s3_secret_key: "{{ vault_s3_secret_key }}"
+s3_endpoint: "https://s3.example.com"        # empty = auto-deploy MinIO
 ```
 
-> **Security**: Pass credentials via `-e`, `ansible-vault`, or environment
-> variables. Never commit secrets to version control.
+```bash
+# Pass S3 credentials via environment variables (never put them in YAML files)
+S3_ACCESS=your_access_key S3_SECRET=your_secret_key \
+  ansible-playbook omnia.image_builder.build -e @my_images.yml -e publish_s3=true
+```
+
+> **Security**: S3 credentials are passed to `image-thrillhouse` via `S3_ACCESS` and
+> `S3_SECRET` environment variables. You can also set `s3_access_id` and `s3_secret_key`
+> Ansible vars (via `-e` or vault) and the `build` role forwards them automatically.
+> Never commit secrets to version control.
 
 ### I want to push images to a container registry
 
@@ -247,10 +253,10 @@ See [argo/README.md](argo/README.md) for full setup, k3s notes, and customizatio
 
 | Variable | Required? | What it is |
 |---|---|---|
-| `os_family` | Yes | `rhel`, `almalinux`, `rocky`, or `fedora` |
-| `os_version` | Yes | e.g. `"10.0"`, `"9.5"`, `"42"` |
-| `repos` | RHEL: No* | List of RPM repositories (*auto-generated for RHEL, see below*) |
-| `base_image_packages` | Yes | List of RPM package names for the base image |
+| `os_family` | Yes | `rhel`, `almalinux`, `rocky`, `fedora`, `ubuntu`, or `debian` |
+| `os_version` | Yes | e.g. `"10.0"`, `"9.5"`, `"42"`, `"24.04"`, `"12"` |
+| `repos` | RHEL: No* | List of package repositories (*auto-generated for RHEL, see below*) |
+| `base_image_packages` | Yes | List of package names for the base image |
 | `compute_images_dict` | No | Per-role package lists for layered images |
 | `work_dir` | No | Build workspace (default: `/var/lib/image-builder`) |
 
@@ -330,7 +336,7 @@ buildah operations, and publishing.
 │     │  layer:                                             │      │
 │     │    manager: { name: dnf, options: {releasever: 10}} │      │
 │     │    repos: [{path: ..., content: ...}]               │      │
-│     │    actions: { install: { packages: [...] } }        │      │
+│     │    actions: { install: {groups: [...], packages: [..]} │      │
 │     │  publish:                                           │      │
 │     │    - type: local                                    │      │
 │     │    - type: squashfs                                 │      │
@@ -402,10 +408,10 @@ Otherwise, it runs as a privileged container with bind-mounted host directories.
 
 | Variable | Example | Description |
 |---|---|---|
-| `os_family` | `"rocky"` | OS family: `rhel`, `almalinux`, `rocky`, `fedora` |
-| `os_version` | `"10.0"` | OS version tag (e.g. `"10.0"`, `"9.5"`, `"42"`) |
-| `base_image_packages` | `["kernel", "dracut", ...]` | List of RPM package names for the base image |
-| `repos` | `[{name, base_url, gpg}]` | RPM repos (auto-generated for RHEL if not provided) |
+| `os_family` | `"rocky"` | OS family: `rhel`, `almalinux`, `rocky`, `fedora`, `ubuntu`, `debian` |
+| `os_version` | `"10.0"` | OS version tag (e.g. `"10.0"`, `"9.5"`, `"42"`, `"24.04"`, `"12"`) |
+| `base_image_packages` | `["kernel", "dracut", ...]` | List of package names for the base image |
+| `repos` | `[{name, base_url, gpg}]` | Package repos (auto-generated for RHEL if not provided) |
 
 #### Optional — general
 

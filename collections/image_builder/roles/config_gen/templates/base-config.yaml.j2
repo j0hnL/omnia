@@ -69,12 +69,14 @@ layer:
 {% endif %}
   actions:
     install:
-      packages:
 {% if _pkg_manager == 'dnf' %}
+      groups:
 {% for grp in (package_groups if package_groups | default([]) | length > 0 else _default_package_groups) %}
-        - '@{{ grp }}'
+        - '{{ grp }}'
 {% endfor %}
-{% elif _pkg_manager == 'mmdebstrap' %}
+{% endif %}
+      packages:
+{% if _pkg_manager == 'mmdebstrap' %}
         - '{{ _deb_kernel_pkg }}'
         - 'live-boot'
         - 'initramfs-tools'
