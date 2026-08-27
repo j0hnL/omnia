@@ -26,7 +26,7 @@ The core idea is simple: **containerize everything**.
 
 Instead of requiring the build host to have `dnf`, `debootstrap`, `dracut`, `createrepo`, or any other packaging tool installed, everything is handled by [OpenCHAMI image-thrillhouse](https://github.com/OpenCHAMI/image-thrillhouse) — a purpose-built tool that orchestrates `buildah`, package managers, and image publishing. The build host only needs `podman`, `buildah`, and Ansible. If `image-thrillhouse` isn't installed locally, it runs as a container automatically.
 
-This means you can build a Rocky Linux 10 image from an Ubuntu 24.04 laptop. You can build an AlmaLinux 9 image from a Fedora 42 workstation. The host OS is irrelevant.
+This means you can build a Rocky Linux 10 image from an Ubuntu 24.04 laptop. You can build an AlmaLinux 9 image from a Fedora workstation. The host OS is irrelevant.
 
 ### The Architecture
 

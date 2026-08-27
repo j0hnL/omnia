@@ -248,7 +248,7 @@ ansible-playbook omnia.image_builder.build_x86_64 \
 ### I want to automate image builds with Argo Workflows
 
 The `argo/` directory contains production-ready Kubernetes manifests tested
-on k3s + Argo Workflows v4.0.5. Builds complete in **~4.5 minutes**.
+on k3s + Argo Workflows v4.0.5.
 
 ```bash
 podman build -t ghcr.io/dell/omnia-image-builder:latest -f argo/Containerfile .
@@ -268,8 +268,8 @@ See [argo/README.md](argo/README.md) for full setup, k3s notes, and customizatio
 | Variable | Required? | What it is |
 |---|---|---|
 | `os_family` | Yes | `rhel`, `almalinux`, `rocky`, `fedora`, `ubuntu`, `debian`, or `wolfi` |
-| `os_version` | Yes | e.g. `"10.0"`, `"9.5"`, `"42"`, `"24.04"`, `"12"` |
-| `repos` | RHEL: No* | List of package repositories (*auto-generated for RHEL, see below*) |
+| `os_version` | Yes | e.g. `"10.0"`, `"9.5"`, `"44"`, `"24.04"`, `"12"`, `"latest"` |
+| `repos` | Usually | Package repos. Auto-generated for RHEL (see below). Not needed for Wolfi. |
 | `base_image_packages` | Yes | List of package names for the base image |
 | `compute_images_dict` | No | Per-role package lists for layered images |
 | `work_dir` | No | Build workspace (default: `/var/lib/image-builder`) |
@@ -287,7 +287,7 @@ invokes `image-thrillhouse` either as a host binary or via a container.
 
 ### What you get
 
-Every image produces these files in `<output_dir>/<image_name>/`:
+RPM- and Debian-based images produce these files in `<output_dir>/<image_name>/`:
 
 | File | What it is | Used for |
 |---|---|---|
@@ -296,6 +296,10 @@ Every image produces these files in `<output_dir>/<image_name>/`:
 | `initramfs.img` | Initramfs with live + network support | PXE initramfs |
 | `manifest.json` | Build metadata: sha256, sizes, OS, build date | Provenance + verification |
 | `SHA256SUMS` | Checksums for all output files | `sha256sum -c SHA256SUMS` |
+
+Wolfi images produce only the squashfs rootfs (no kernel or initramfs) since
+Wolfi is a container-native distro without its own kernel. Wolfi images are
+intended for containerized workloads, not bare-metal PXE boot.
 
 ### Validating built images
 
@@ -559,27 +563,26 @@ podman 5.8.2 / buildah 1.43.2.
 
 #### x86_64 image builds (measured)
 
-| OS | Install | Dracut | Total | Squashfs |
-|---|---|---|---|---|
-| **Rocky 10** | 4m 36s | 59s | **6m 44s** | 868 MB |
-| **AlmaLinux 10** | 3m 48s | 60s | **5m 55s** | 884 MB |
-| **Fedora 44** | 4m 01s | — | **5m 11s** | 874 MB |
-| **Wolfi** | — (apk) | — | **6m 14s** | 39 MB |
+| OS | Total build time | Squashfs size | Notes |
+|---|---|---|---|
+| **Rocky 10** | **6m 44s** | 868 MB | install 4m 36s, dracut 59s |
+| **AlmaLinux 10** | **5m 55s** | 884 MB | install 3m 48s, dracut 60s |
+| **Fedora 44** | **5m 11s** | 874 MB | install 4m 01s |
+| **Wolfi** | **6m 14s** | 39 MB | apk add, no kernel/dracut |
 
-RPM-based builds (Rocky, AlmaLinux, Fedora) include 10 packages (`kernel`, `dracut`,
-`NetworkManager`, `openssh-server`, `chrony`, etc.) plus "Minimal Install" and
-"Development Tools" package groups (~300–420 total packages installed). Times are
-wall-clock from `image-thrillhouse build` start to finish, including package download,
-install, dracut initramfs generation, buildah commit, and squashfs export. Repos
-accessed over network (not cached). Container images are pre-pulled.
+**RPM-based builds** (Rocky, AlmaLinux, Fedora) install 10 base packages plus
+"Minimal Install" and "Development Tools" groups (~300-420 total packages).
+Times are wall-clock from `image-thrillhouse build` start to finish and include
+package download, install, dracut initramfs generation, buildah commit, and
+squashfs export. Repos were accessed over network (not cached).
 
-Wolfi builds start from a parent image (`cgr.dev/chainguard/wolfi-base`) and install
-15 packages via `apk add`. The resulting squashfs is dramatically smaller (39 MB vs
-~870 MB) because Wolfi is designed for minimal container images.
+**Wolfi builds** start from a parent image (`cgr.dev/chainguard/wolfi-base`)
+and install 15 packages via `apk add`. The squashfs is much smaller (39 MB vs
+~870 MB) because Wolfi packages are granular and the base image is minimal.
 
-*Note: Fedora builds require direct mirror URLs — Fedora's metalink redirection
-does not work inside build containers. Use a static baseurl such as
-`https://dl.fedoraproject.org/pub/fedora/linux/releases/<ver>/Everything/x86_64/os`.*
+> **Fedora note:** Fedora's metalink redirection does not resolve inside build
+> containers. Use a direct mirror URL instead, e.g.
+> `https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os`.
 
 #### aarch64 cross-build
 
