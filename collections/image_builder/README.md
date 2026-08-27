@@ -90,6 +90,17 @@ distros use `dnf` + `dracut`; Debian-based distros use `mmdebstrap` +
 `update-initramfs`. Wolfi uses a parent build from `cgr.dev/chainguard/wolfi-base`
 and installs packages via `apk add` commands.
 
+> **What is Wolfi?** [Wolfi](https://wolfi.dev) is a Linux "undistro" created
+> by [Chainguard](https://chainguard.dev) specifically for container and
+> supply-chain security. It uses the `apk` package format (like Alpine, but
+> glibc-based and not binary-compatible with Alpine), builds every package
+> from source with build-time SBOMs, and is designed for minimal attack
+> surface. Wolfi images are dramatically smaller than traditional distros
+> (~39 MB vs ~870 MB for an EL base image) because packages are granular
+> and independent — you install only what you need. This makes Wolfi a
+> strong choice for lightweight, security-hardened compute node images
+> where CVE exposure and image transfer times matter.
+
 ## Examples by Use Case
 
 ### I just want a basic bootable image
