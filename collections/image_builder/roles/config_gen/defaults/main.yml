@@ -62,3 +62,8 @@ serve_port: 8080
 
 # ── CA certificate ─────────────────────────────────────────────────────
 ca_cert_path: ""
+
+# ── Wolfi (optional) ──────────────────────────────────────────────────
+# Override the default Wolfi base image (uses cgr.dev/chainguard/wolfi-base).
+# Only used when os_family=wolfi.
+wolfi_base_image: ""

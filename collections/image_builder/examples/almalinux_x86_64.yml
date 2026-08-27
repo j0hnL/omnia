@@ -1,0 +1,28 @@
+# AlmaLinux 10 x86_64 — base bootable image
+#
+# Build:
+#   ansible-playbook omnia.image_builder.build -e @examples/almalinux_x86_64.yml
+---
+os_family: almalinux
+os_version: "10.0"
+target_arch: x86_64
+
+repos:
+  - name: baseos
+    base_url: https://repo.almalinux.org/almalinux/10/BaseOS/x86_64/os
+    gpg: ""
+  - name: appstream
+    base_url: https://repo.almalinux.org/almalinux/10/AppStream/x86_64/os
+    gpg: ""
+
+base_image_packages:
+  - kernel
+  - dracut
+  - dracut-live
+  - dracut-network
+  - NetworkManager
+  - openssh-server
+  - chrony
+  - sudo
+  - iproute
+  - iputils

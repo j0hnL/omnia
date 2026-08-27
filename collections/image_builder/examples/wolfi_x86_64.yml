@@ -1,0 +1,41 @@
+# Wolfi x86_64 — minimal, supply-chain-secure container image
+#
+# Wolfi is Chainguard's "undistro" designed for minimal container images.
+# Uses apk package manager instead of dnf/apt. Packages are installed via
+# commands since image-thrillhouse does not yet have a native apk backend.
+#
+# Build:
+#   ansible-playbook omnia.image_builder.build -e @examples/wolfi_x86_64.yml
+#
+# NOTE: Wolfi images use a parent build from cgr.dev/chainguard/wolfi-base.
+# If using rootless podman, ensure /etc/subuid and /etc/subgid allocate
+# at least 65536 UIDs/GIDs per user (Wolfi needs UID 65532 for /home/nonroot).
+# When running image-thrillhouse as a container, mount a storage.conf with
+# ignore_chown_errors = "true" if you encounter UID mapping errors.
+---
+os_family: wolfi
+os_version: "latest"
+target_arch: x86_64
+
+# Wolfi images don't need repos — apk repos are built into the base image.
+# The base image (cgr.dev/chainguard/wolfi-base) includes the public Wolfi
+# package repo at https://packages.wolfi.dev/os.
+
+# Packages to install via apk add. Note: some common packages have different
+# names in Wolfi vs traditional distros (e.g. no standalone "tar" package —
+# it's provided by busybox).
+base_image_packages:
+  - bash
+  - curl
+  - openssh-server
+  - iproute2
+  - sudo
+  - shadow
+  - procps
+  - coreutils
+  - findutils
+  - grep
+  - gawk
+  - sed
+  - gzip
+  - wget

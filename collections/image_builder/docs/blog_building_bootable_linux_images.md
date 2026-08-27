@@ -1,6 +1,6 @@
 # Building Bootable Linux Images in One Command: Inside Omnia Image Builder
 
-*How we built an Ansible collection that turns six Linux distros into PXE-bootable HPC and AI cluster images — with zero host dependencies, cross-architecture support, and air-gapped builds.*
+*How we built an Ansible collection that turns seven Linux distros into PXE-bootable HPC and AI cluster images — with zero host dependencies, cross-architecture support, and air-gapped builds.*
 
 ---
 
@@ -77,7 +77,7 @@ The build pipeline has two Ansible roles backed by image-thrillhouse:
 
 The `config_gen` role translates your Ansible variables into image-thrillhouse's declarative YAML config format (`meta`/`layer`/`publish` schema). Then `image-thrillhouse` handles everything — package installation, buildah operations, initramfs generation, squashfs export, and optional publishing to registries or S3. The Ansible `build` role simply invokes `image-thrillhouse build` for each config.
 
-### One Command, Six Operating Systems
+### One Command, Seven Operating Systems
 
 ```bash
 # Rocky Linux 10
@@ -90,7 +90,7 @@ ansible-playbook omnia.image_builder.build_x86_64 -e @ubuntu.yml
 ansible-playbook omnia.image_builder.build_x86_64 -e @rhel.yml
 ```
 
-The collection handles the differences automatically. RPM-based distros (RHEL, AlmaLinux, Rocky, Fedora) use `dnf` + `dracut`. Debian-based distros (Ubuntu, Debian) use `mmdebstrap` + `update-initramfs`. The user provides the same YAML structure regardless — `os_family`, `os_version`, `repos`, `base_image_packages` — and the collection selects the right package manager and initramfs tool via image-thrillhouse.
+The collection handles the differences automatically. RPM-based distros (RHEL, AlmaLinux, Rocky, Fedora) use `dnf` + `dracut`. Debian-based distros (Ubuntu, Debian) use `mmdebstrap` + `update-initramfs`. Wolfi uses a parent build from `wolfi-base` with `apk add` commands. The user provides the same YAML structure regardless — `os_family`, `os_version`, `repos`, `base_image_packages` — and the collection selects the right package manager and initramfs tool via image-thrillhouse.
 
 This isn't just convenience. It means the same CI pipeline, the same Argo Workflow, the same operational process can produce images for any supported OS. When your cluster needs to migrate from CentOS to Rocky, or add Ubuntu nodes for a specific workload, you change a YAML file, not your tooling.
 

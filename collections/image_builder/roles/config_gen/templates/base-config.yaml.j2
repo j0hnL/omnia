@@ -8,12 +8,20 @@ meta:
   name: '{{ _base_image_name }}'
   tags:
     - '{{ os_version }}'
+{% if os_family | default('rhel') == 'wolfi' %}
+  from: '{{ wolfi_base_image | default(_wolfi_base_image) }}'
+{% else %}
   from: scratch
+{% endif %}
 
 layer:
   manager:
+{% if os_family | default('rhel') == 'wolfi' %}
+    name: dnf
+{% else %}
     name: '{{ _pkg_manager }}'
-{% if _pkg_manager == 'dnf' %}
+{% endif %}
+{% if _pkg_manager == 'dnf' and os_family | default('rhel') != 'wolfi' %}
     options:
       releasever: '{{ os_version.split(".")[0] }}'
     config: |
@@ -28,6 +36,7 @@ layer:
       mirror: '{{ _repos[0].base_url if _repos | length > 0 else _deb_default_mirror }}'
       variant: minbase
 {% endif %}
+{% if os_family | default('rhel') != 'wolfi' %}
   repos:
 {% if _pkg_manager == 'dnf' %}
 {% for repo in _repos %}
@@ -67,7 +76,12 @@ layer:
         deb {{ _deb_default_mirror }} {{ _deb_codename }} main universe
 {% endif %}
 {% endif %}
+{% endif %}
   actions:
+{% if os_family | default('rhel') == 'wolfi' %}
+    commands:
+      - script: 'apk update && apk add --no-cache {{ _packages | join(" ") }}'
+{% else %}
     install:
 {% if _pkg_manager == 'dnf' %}
       groups:
@@ -90,6 +104,7 @@ layer:
 {% for cmd in _post_install_cmds %}
       - script: '{{ cmd | replace("'", "''") }}'
 {% endfor %}
+{% endif %}
 {% endif %}
 
 publish:

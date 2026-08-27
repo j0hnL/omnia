@@ -28,6 +28,7 @@ _pkg_manager_map:
   fedora: dnf
   ubuntu: mmdebstrap
   debian: mmdebstrap
+  wolfi: dnf
 
 # Debian/Ubuntu specifics
 _deb_codename: >-
@@ -43,6 +44,10 @@ _deb_default_mirror: >-
 
 _deb_kernel_pkg: >-
   {{ 'linux-image-generic' if os_family == 'ubuntu' else 'linux-image-' + _deb_arch }}
+
+# Wolfi specifics — parent build from wolfi-base, packages via apk commands
+_wolfi_base_image: "cgr.dev/chainguard/wolfi-base:latest"
+_wolfi_apk_repo: "https://packages.wolfi.dev/os"
 
 # Omnia integration vars
 software_config_file_path: "{{ input_project_dir }}/software_config.json"

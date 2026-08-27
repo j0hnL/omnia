@@ -1,6 +1,6 @@
 # Omnia Image Builder
 
-Build bootable Linux OS images with a single command. Uses [OpenCHAMI image-thrillhouse](https://github.com/OpenCHAMI/image-thrillhouse) as the core build engine. Supports RHEL, AlmaLinux, Rocky Linux, Fedora, Ubuntu, and Debian. Works on any Linux machine with `podman` and `buildah`.
+Build bootable Linux OS images with a single command. Uses [OpenCHAMI image-thrillhouse](https://github.com/OpenCHAMI/image-thrillhouse) as the core build engine. Supports RHEL, AlmaLinux, Rocky Linux, Fedora, Ubuntu, Debian, and Wolfi. Works on any Linux machine with `podman` and `buildah`.
 
 ```bash
 ansible-playbook omnia.image_builder.build -e @examples/rocky_x86_64.yml
@@ -74,18 +74,21 @@ Serve these files over HTTP and you have PXE-bootable images.
 
 ## Supported Operating Systems
 
-| OS | `os_family` | Package manager | Example file |
-|---|---|---|---|
-| **RHEL** 9/10 | `rhel` | dnf | `examples/standalone_x86_64.yml` |
-| **AlmaLinux** 9/10 | `almalinux` | dnf | `examples/almalinux_x86_64.yml` |
-| **Rocky Linux** 9/10 | `rocky` | dnf | `examples/rocky_x86_64.yml` |
-| **Fedora** 41/42 | `fedora` | dnf | `examples/fedora_x86_64.yml` |
-| **Ubuntu** 24.04/22.04 | `ubuntu` | mmdebstrap | `examples/ubuntu_x86_64.yml` |
-| **Debian** 12/11 | `debian` | mmdebstrap | `examples/debian_x86_64.yml` |
+| OS | `os_family` | Package manager | Build type | Example file |
+|---|---|---|---|---|
+| **RHEL** 9/10 | `rhel` | dnf | scratch | `examples/standalone_x86_64.yml` |
+| **AlmaLinux** 9/10 | `almalinux` | dnf | scratch | `examples/almalinux_x86_64.yml` |
+| **Rocky Linux** 9/10 | `rocky` | dnf | scratch | `examples/rocky_x86_64.yml` |
+| **Fedora** 43/44 | `fedora` | dnf | scratch | `examples/fedora_x86_64.yml` |
+| **Ubuntu** 24.04/22.04 | `ubuntu` | mmdebstrap | scratch | `examples/ubuntu_x86_64.yml` |
+| **Debian** 12/11 | `debian` | mmdebstrap | scratch | `examples/debian_x86_64.yml` |
+| **Wolfi** | `wolfi` | apk (via commands) | parent | `examples/wolfi_x86_64.yml` |
 
 The collection automatically selects the correct package manager, container
 image, package groups, and initramfs tooling for each OS family. RPM-based
-distros use `dnf` + `dracut`; Debian-based distros use `mmdebstrap` + `update-initramfs`.
+distros use `dnf` + `dracut`; Debian-based distros use `mmdebstrap` +
+`update-initramfs`. Wolfi uses a parent build from `cgr.dev/chainguard/wolfi-base`
+and installs packages via `apk add` commands.
 
 ## Examples by Use Case
 
@@ -253,7 +256,7 @@ See [argo/README.md](argo/README.md) for full setup, k3s notes, and customizatio
 
 | Variable | Required? | What it is |
 |---|---|---|
-| `os_family` | Yes | `rhel`, `almalinux`, `rocky`, `fedora`, `ubuntu`, or `debian` |
+| `os_family` | Yes | `rhel`, `almalinux`, `rocky`, `fedora`, `ubuntu`, `debian`, or `wolfi` |
 | `os_version` | Yes | e.g. `"10.0"`, `"9.5"`, `"42"`, `"24.04"`, `"12"` |
 | `repos` | RHEL: No* | List of package repositories (*auto-generated for RHEL, see below*) |
 | `base_image_packages` | Yes | List of package names for the base image |
@@ -408,7 +411,7 @@ Otherwise, it runs as a privileged container with bind-mounted host directories.
 
 | Variable | Example | Description |
 |---|---|---|
-| `os_family` | `"rocky"` | OS family: `rhel`, `almalinux`, `rocky`, `fedora`, `ubuntu`, `debian` |
+| `os_family` | `"rocky"` | OS family: `rhel`, `almalinux`, `rocky`, `fedora`, `ubuntu`, `debian`, `wolfi` |
 | `os_version` | `"10.0"` | OS version tag (e.g. `"10.0"`, `"9.5"`, `"42"`, `"24.04"`, `"12"`) |
 | `base_image_packages` | `["kernel", "dracut", ...]` | List of package names for the base image |
 | `repos` | `[{name, base_url, gpg}]` | Package repos (auto-generated for RHEL if not provided) |
@@ -549,17 +552,23 @@ podman 5.8.2 / buildah 1.43.2.
 |---|---|---|---|---|
 | **Rocky 10** | 4m 36s | 59s | **6m 44s** | 868 MB |
 | **AlmaLinux 10** | 3m 48s | 60s | **5m 55s** | 884 MB |
+| **Fedora 44** | 4m 01s | — | **5m 11s** | 874 MB |
+| **Wolfi** | — (apk) | — | **6m 14s** | 39 MB |
 
-All builds include 14 packages (`kernel`, `dracut`, `NetworkManager`, `openssh-server`,
-`chrony`, `nfs-utils`, `rdma-core`, etc.) plus "Minimal Install" and "Development Tools"
-package groups (420 total packages installed). Times are wall-clock from
-`image-thrillhouse build` start to finish, including package download, install, dracut
-initramfs generation, buildah commit, and squashfs export. Repos accessed over network
-(not cached). Container images are pre-pulled.
+RPM-based builds (Rocky, AlmaLinux, Fedora) include 10 packages (`kernel`, `dracut`,
+`NetworkManager`, `openssh-server`, `chrony`, etc.) plus "Minimal Install" and
+"Development Tools" package groups (~300–420 total packages installed). Times are
+wall-clock from `image-thrillhouse build` start to finish, including package download,
+install, dracut initramfs generation, buildah commit, and squashfs export. Repos
+accessed over network (not cached). Container images are pre-pulled.
 
-*Note: Fedora 42 builds are supported but were not benchmarked due to Fedora's
-mirror-redirection service requiring metalink resolution inside the build container.
-Use a direct mirror URL or a local repo mirror for Fedora builds.*
+Wolfi builds start from a parent image (`cgr.dev/chainguard/wolfi-base`) and install
+15 packages via `apk add`. The resulting squashfs is dramatically smaller (39 MB vs
+~870 MB) because Wolfi is designed for minimal container images.
+
+*Note: Fedora builds require direct mirror URLs — Fedora's metalink redirection
+does not work inside build containers. Use a static baseurl such as
+`https://dl.fedoraproject.org/pub/fedora/linux/releases/<ver>/Everything/x86_64/os`.*
 
 #### aarch64 cross-build
 
@@ -587,10 +596,11 @@ image_builder/
 ├── examples/
 │   ├── rocky_x86_64.yml                    ← Rocky Linux 10
 │   ├── almalinux_x86_64.yml               ← AlmaLinux 10
-│   ├── fedora_x86_64.yml                   ← Fedora 42
+│   ├── fedora_x86_64.yml                   ← Fedora 44
 │   ├── ubuntu_x86_64.yml                   ← Ubuntu 24.04
 │   ├── debian_x86_64.yml                   ← Debian 12
 │   ├── slurm_hpc_cluster.yml             ← HPC Slurm cluster (4 node roles)
+│   ├── wolfi_x86_64.yml                    ← Wolfi (minimal supply-chain-secure)
 │   ├── standalone_x86_64.yml              ← RHEL with direct repos
 │   ├── standalone_aarch64_crossbuild.yml  ← ARM cross-build
 │   └── offline_x86_64.yml                 ← Air-gapped build
@@ -689,7 +699,7 @@ for ready-to-use configurations.
 
 | Feature | Omnia built-in | This collection |
 |---|---|---|
-| OS support | RHEL only | RHEL, AlmaLinux, Rocky, Fedora, Ubuntu, Debian |
+| OS support | RHEL only | RHEL, AlmaLinux, Rocky, Fedora, Ubuntu, Debian, Wolfi |
 | Host dependencies | dnf, mksquashfs, mc on host | Only podman + buildah |
 | ARM builds | Remote ARM node via SSH | Cross-build on x86_64 (no ARM hardware) |
 | Offline builds | Requires Pulp | Built-in local mirror (containerized nginx) |
@@ -722,7 +732,7 @@ add a new OS family and test real builds on hardware.
 
 ### What we'd love help with
 
-- **New OS support** — SUSE/openSUSE (zypper), Azure Linux, or other distros
+- **New OS support** — SUSE/openSUSE (zypper), Azure Linux, Alpine, or other distros
 - **New example files** — Kubernetes clusters, AI/ML workloads, scientific computing
 - **ARM improvements** — faster cross-build, native ARM CI
 - **Testing** — integration tests on real hardware, more QEMU boot validation

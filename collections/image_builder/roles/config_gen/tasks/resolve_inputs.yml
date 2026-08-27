@@ -94,7 +94,10 @@
             3. System must be registered (entitlement certs in /etc/pki/entitlement/)
             4. Set rhel_fallback_to_alma: true — use AlmaLinux repos (binary compatible)
           For other OS families, provide repos directly.
-      when: repos | default([]) | length == 0
+          Wolfi images do not require repos (apk repos are built into the base image).
+      when:
+        - repos | default([]) | length == 0
+        - os_family | default('rhel') != 'wolfi'
 
     - name: Display standalone configuration
       ansible.builtin.debug:
