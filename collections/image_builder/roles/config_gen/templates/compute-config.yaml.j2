@@ -81,7 +81,7 @@ layer:
 {% if _fg_post_cmds | default([]) | length > 0 %}
     commands:
 {% for cmd in _fg_post_cmds %}
-      - script: '{{ cmd }}'
+      - script: '{{ cmd | replace("'", "''") }}'
 {% endfor %}
 {% endif %}
 

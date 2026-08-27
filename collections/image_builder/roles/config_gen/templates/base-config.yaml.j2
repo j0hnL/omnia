@@ -88,7 +88,7 @@ layer:
 {% if _post_install_cmds | default([]) | length > 0 %}
     commands:
 {% for cmd in _post_install_cmds %}
-      - script: '{{ cmd }}'
+      - script: '{{ cmd | replace("'", "''") }}'
 {% endfor %}
 {% endif %}
 
