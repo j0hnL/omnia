@@ -557,8 +557,8 @@ dracut initramfs generation, buildah commit, and squashfs export.
 Container images are cached for all runs.
 
 RHEL/Rocky/AlmaLinux use "Minimal Install" + "Development Tools" groups.
-Fedora uses `c-development` + `development-tools` groups (dnf5 requires
-group IDs instead of display names). All OS families produce complete
+Fedora uses `c-development` + `development-tools` groups (group IDs
+instead of display names). All OS families produce complete
 PXE-bootable images with kernel, initramfs, and rootfs.
 
 #### aarch64 cross-build (on same x86_64 host, no ARM hardware)
@@ -722,7 +722,7 @@ and follows its open-source values.
 
 ```bash
 cd collections/image_builder
-make test      # run the 223-test pytest suite
+make test      # run the 284-test pytest suite
 make lint      # yamllint + ansible-lint
 make help      # see all developer tasks
 ```
