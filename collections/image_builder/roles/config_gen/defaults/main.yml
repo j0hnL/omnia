@@ -44,8 +44,13 @@ rhel_activation_key: ""
 rhel_satellite_url: ""
 rhel_fallback_to_alma: true
 
+# ── Package groups (override to customize) ─────────────────────────────
+# Empty list = use OS-family defaults from vars/main.yml
+package_groups: []
+
 # ── Omnia integration ─────────────────────────────────────────────────
 omnia_integration: false
+fetch_from_pulp: false
 metadata_file_path: "/opt/omnia/offline_repo/.data/localrepo_metadata.yml"
 functional_groups_config_path: "/opt/omnia/.data/functional_groups_config.yml"
 input_project_dir: "/opt/omnia/input"

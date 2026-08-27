@@ -33,18 +33,21 @@ build_retry_delay: 10
 qemu_binfmt_image: "docker.io/multiarch/qemu-user-static"
 qemu_skip_if_registered: true
 
-# ── S3 publishing (for PowerScale ACL) ─────────────────────────────────
-publish_s3: false
-s3_provider: ""
+# ── S3 publishing (passed through to config_gen; not used directly) ───
+# publish_s3 and s3_* are consumed by config_gen templates, not here.
 
 # ── OS (needed for export) ─────────────────────────────────────────────
 os_family: "rhel"
 os_version: "10.0"
 
+# ── Image naming ───────────────────────────────────────────────────────
+image_name_suffix: ""
+
+# ── CA certificate (bind-mounted into container builds) ────────────────
+ca_cert_path: ""
+
 # ── Registry ────────────────────────────────────────────────────────────
 registry_url: ""
 registry_ns: "images"
 
-# ── Squashfs export settings ──────────────────────────────────────────
-squashfs_compression: "zstd"
-squashfs_comp_level: 3
+# Note: squashfs settings are consumed by config_gen publish templates.

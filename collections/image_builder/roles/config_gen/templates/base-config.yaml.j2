@@ -12,7 +12,7 @@ meta:
 
 layer:
   manager:
-    name: {{ _pkg_manager }}
+    name: '{{ _pkg_manager }}'
 {% if _pkg_manager == 'dnf' %}
     options:
       releasever: '{{ os_version.split(".")[0] }}'
@@ -30,14 +30,14 @@ layer:
   repos:
 {% if _pkg_manager == 'dnf' %}
 {% for repo in _repos %}
-{% if repo.base_url | default('') | length > 1 %}
+{% if repo.base_url | default('') | length > 0 %}
     - path: /etc/image-thrillhouse/yum.repos.d/{{ repo.name }}.repo
       content: |
         [{{ repo.name }}]
         name={{ repo.name }}
         baseurl={{ repo.base_url }}
         enabled=1
-{% if repo.gpg | default('') | length > 1 %}
+{% if repo.gpg | default('') | length > 0 %}
         gpgcheck=1
         gpgkey={{ repo.gpg }}
 {% else %}
@@ -70,17 +70,17 @@ layer:
     install:
       packages:
 {% if _pkg_manager == 'dnf' %}
-{% for grp in package_groups | default(_default_package_groups) %}
+{% for grp in (package_groups if package_groups | default([]) | length > 0 else _default_package_groups) %}
         - '@{{ grp }}'
 {% endfor %}
 {% elif _pkg_manager == 'mmdebstrap' %}
-        - {{ _deb_kernel_pkg }}
-        - live-boot
-        - initramfs-tools
-        - systemd-sysv
+        - '{{ _deb_kernel_pkg }}'
+        - 'live-boot'
+        - 'initramfs-tools'
+        - 'systemd-sysv'
 {% endif %}
 {% for pkg in _packages %}
-        - {{ pkg }}
+        - '{{ pkg }}'
 {% endfor %}
 {% if _post_install_cmds | default([]) | length > 0 %}
     run:

@@ -17,6 +17,7 @@
     cmd: |
       set -euo pipefail
       IMG="{{ _export_image_name }}"
+      OUT="{{ output_dir }}/{{ _export_group_name }}"
 
       # Check if image exists in local storage
       if ! buildah images --format '{% raw %}{{.Name}}:{{.Tag}}{% endraw %}' | grep -qF "{{ _export_image_name | regex_replace('^localhost/', '') }}"; then
@@ -25,6 +26,10 @@
       fi
 
       CTR=$(buildah from "$IMG")
+      # Ensure cleanup on exit
+      cleanup() { buildah umount "$CTR" 2>/dev/null; buildah rm "$CTR" 2>/dev/null; }
+      trap cleanup EXIT
+
       MOUNT=$(buildah mount "$CTR")
       echo "Mounted $IMG at $MOUNT"
 
@@ -33,28 +38,28 @@
       if [ -n "$KVER" ]; then
         # vmlinuz: check /boot (RHEL/Rocky/Alma) then /lib/modules (Fedora 42+)
         if [ -f "$MOUNT/boot/vmlinuz-$KVER" ]; then
-          cp "$MOUNT/boot/vmlinuz-$KVER" {{ output_dir }}/{{ _export_group_name }}/vmlinuz
+          cp "$MOUNT/boot/vmlinuz-$KVER" "$OUT/vmlinuz"
           echo "Exported kernel: /boot/vmlinuz-$KVER"
         elif [ -f "$MOUNT/lib/modules/$KVER/vmlinuz" ]; then
-          cp "$MOUNT/lib/modules/$KVER/vmlinuz" {{ output_dir }}/{{ _export_group_name }}/vmlinuz
+          cp "$MOUNT/lib/modules/$KVER/vmlinuz" "$OUT/vmlinuz"
           echo "Exported kernel: /lib/modules/$KVER/vmlinuz"
         fi
 
         # initramfs: RHEL uses initramfs-<kver>.img, Debian uses initrd.img-<kver>
         if [ -f "$MOUNT/boot/initramfs-$KVER.img" ]; then
-          cp "$MOUNT/boot/initramfs-$KVER.img" {{ output_dir }}/{{ _export_group_name }}/initramfs.img
+          cp "$MOUNT/boot/initramfs-$KVER.img" "$OUT/initramfs.img"
           echo "Exported initramfs: /boot/initramfs-$KVER.img"
         elif [ -f "$MOUNT/boot/initrd.img-$KVER" ]; then
-          cp "$MOUNT/boot/initrd.img-$KVER" {{ output_dir }}/{{ _export_group_name }}/initramfs.img
+          cp "$MOUNT/boot/initrd.img-$KVER" "$OUT/initramfs.img"
           echo "Exported initramfs: /boot/initrd.img-$KVER"
         fi
       fi
 
       # Generate manifest.json
-      cd {{ output_dir }}/{{ _export_group_name }}
+      cd "$OUT"
       checksum() { [ -f "$1" ] && sha256sum "$1" | awk '{print $1}' || echo ""; }
       filesize() { [ -f "$1" ] && stat -c%s "$1" || echo 0; }
-      cat > manifest.json << MANIFEST_EOF
+      cat > manifest.json <<MANIFEST_EOF
       {
         "image_name": "{{ _export_group_name }}",
         "os_family": "{{ os_family | default('rhel') }}",
@@ -82,14 +87,12 @@
 
       sha256sum vmlinuz initramfs.img 2>/dev/null > SHA256SUMS || true
 
-      buildah umount "$CTR"
-      buildah rm "$CTR"
-      echo "PXE artifacts exported to {{ output_dir }}/{{ _export_group_name }}/"
-      ls -lh {{ output_dir }}/{{ _export_group_name }}/
+      echo "PXE artifacts exported to $OUT/"
+      ls -lh "$OUT/"
     executable: /bin/bash
   register: _pxe_export_result
   changed_when: true
-  failed_when: false
+  failed_when: _pxe_export_result.rc != 0 and 'not found in local storage' not in (_pxe_export_result.stdout | default(''))
 
 - name: "Display PXE export result for {{ _export_label }}"
   ansible.builtin.debug:

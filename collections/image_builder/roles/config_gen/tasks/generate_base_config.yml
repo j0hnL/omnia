@@ -11,8 +11,8 @@
 - name: Set post-install commands for base image
   ansible.builtin.set_fact:
     _post_install_cmds: >-
-      {{ [_dracut_script | regex_replace('\n', ' && ')] if _pkg_manager == 'dnf'
-         else [_initramfs_script | regex_replace('\n', ' && ')] if _pkg_manager == 'mmdebstrap'
+      {{ _dracut_post_install_cmds if _pkg_manager == 'dnf'
+         else _initramfs_post_install_cmds if _pkg_manager == 'mmdebstrap'
          else [] }}
 
 - name: Generate base image config

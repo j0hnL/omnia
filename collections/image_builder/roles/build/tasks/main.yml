@@ -17,7 +17,7 @@
 - name: Setup QEMU for cross-architecture builds
   ansible.builtin.include_tasks: setup_qemu.yml
   when:
-    - target_arch != ansible_architecture | default('x86_64')
+    - target_arch != (ansible_architecture | default('x86_64'))
     - _use_container_builder | default(false) | bool or _builder_bin is defined
 
 - name: Read build manifest

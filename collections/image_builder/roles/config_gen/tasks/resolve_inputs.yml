@@ -48,8 +48,8 @@
                 sslclientkey: "/etc/pki/entitlement/{{ _rhel_entitlement_key }}"
                 sslcacert: "/etc/rhsm/ca/redhat-uep.pem"
           vars:
-            _rhel_entitlement_cert: "{{ lookup('fileglob', '/etc/pki/entitlement/*[0-9].pem') | basename | default('') }}"
-            _rhel_entitlement_key: "{{ lookup('fileglob', '/etc/pki/entitlement/*-key.pem') | basename | default('') }}"
+            _rhel_entitlement_cert: "{{ lookup('fileglob', '/etc/pki/entitlement/*[0-9].pem', wantlist=True) | first | default('') | basename }}"
+            _rhel_entitlement_key: "{{ lookup('fileglob', '/etc/pki/entitlement/*-key.pem', wantlist=True) | first | default('') | basename }}"
           when:
             - rhel_satellite_url | default('') | length == 0
             - repos | default([]) | length == 0
@@ -168,6 +168,7 @@
         input_project_dir: "{{ input_project_dir }}"
         additional_json_path: "{{ input_project_dir }}/config/{{ target_arch }}/{{ os_family }}/{{ os_version }}/additional_packages.json"
       register: compute_images_output
+      when: not enable_build_stream | default(false) | bool
 
     - name: Filter compute_images_dict for target architecture
       ansible.builtin.set_fact:
@@ -178,3 +179,4 @@
             | selectattr('key', 'search', '_' + target_arch + '$')
             | items2dict
           }}
+      when: not enable_build_stream | default(false) | bool

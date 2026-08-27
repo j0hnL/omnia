@@ -33,10 +33,10 @@
       # Auto-generated build manifest — omnia.image_builder config_gen
       # Build order matters: base image first, then compute images.
       ---
-      os_family: {{ os_family | default('rhel') }}
+      os_family: "{{ os_family | default('rhel') }}"
       os_version: "{{ os_version }}"
-      target_arch: {{ target_arch }}
-      base_image_name: {{ base_image_name }}
+      target_arch: "{{ target_arch }}"
+      base_image_name: "{{ base_image_name }}"
       configs:
       {{ _build_configs | to_nice_yaml(indent=2) | indent(2, false) }}
     dest: "{{ config_output_dir }}/build_manifest.yml"

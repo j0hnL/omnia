@@ -47,33 +47,14 @@ _deb_kernel_pkg: >-
 # Omnia integration vars
 software_config_file_path: "{{ input_project_dir }}/software_config.json"
 
-# Dracut commands for PXE-bootable images (RPM-based)
-_dracut_script: |
-  #!/usr/bin/bash
-  set -x
-  KVER=$(ls /lib/modules/ | sort -V | tail -1)
-  echo "Kernel version: $KVER"
-  if [ -z "$KVER" ]; then
-    echo "WARNING: No kernel modules found, skipping dracut"
-    exit 0
-  fi
-  dracut --add dmsquash-live --add livenet --add network-manager \
-    --install /usr/lib/systemd/systemd-sysroot-fstab-check \
-    --kver "$KVER" -N -f --logfile /tmp/dracut.log 2>&1
-  cat /tmp/dracut.log 2>/dev/null || true
+# Post-install commands for PXE-bootable images (RPM-based)
+# Each entry is a single valid shell command — no shebangs, no multiline.
+_dracut_post_install_cmds:
+  - 'KVER=$(ls /lib/modules/ | sort -V | tail -1); if [ -z "$KVER" ]; then echo "WARNING: No kernel modules found, skipping dracut"; exit 0; fi; dracut --add dmsquash-live --add livenet --add network-manager --install /usr/lib/systemd/systemd-sysroot-fstab-check --kver "$KVER" -N -f --logfile /tmp/dracut.log 2>&1; cat /tmp/dracut.log 2>/dev/null || true'
 
-# Initramfs commands for PXE-bootable images (Debian-based)
-_initramfs_script: |
-  #!/bin/bash
-  set -x
-  export DEBIAN_FRONTEND=noninteractive
-  KVER=$(ls /lib/modules/ | sort -V | tail -1)
-  echo "Kernel version: $KVER"
-  if [ -z "$KVER" ]; then
-    echo "WARNING: No kernel modules found, skipping initramfs"
-    exit 0
-  fi
-  update-initramfs -c -k "$KVER" 2>&1 || update-initramfs -u -k "$KVER" 2>&1
+# Post-install commands for PXE-bootable images (Debian-based)
+_initramfs_post_install_cmds:
+  - 'export DEBIAN_FRONTEND=noninteractive; KVER=$(ls /lib/modules/ | sort -V | tail -1); if [ -z "$KVER" ]; then echo "WARNING: No kernel modules found, skipping initramfs"; exit 0; fi; update-initramfs -c -k "$KVER" 2>&1 || update-initramfs -u -k "$KVER" 2>&1'
 
 # Per-functional-group compute commands (mostly placeholders)
 _compute_commands:

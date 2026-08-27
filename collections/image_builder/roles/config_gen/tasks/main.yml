@@ -33,16 +33,22 @@
 - name: Install CA certificate (optional)
   when: ca_cert_path | default('') | length > 0
   block:
+    - name: Set CA trust paths per OS family
+      ansible.builtin.set_fact:
+        _ca_anchor_dir: "{{ '/usr/local/share/ca-certificates' if os_family in ['ubuntu', 'debian'] else '/etc/pki/ca-trust/source/anchors' }}"
+        _ca_update_cmd: "{{ 'update-ca-certificates' if os_family in ['ubuntu', 'debian'] else 'update-ca-trust' }}"
+
     - name: Copy CA certificate to anchors
       ansible.builtin.copy:
         src: "{{ ca_cert_path }}"
-        dest: "/etc/pki/ca-trust/source/anchors/image_builder_ca.crt"
+        dest: "{{ _ca_anchor_dir }}/image_builder_ca.crt"
         mode: "{{ dir_permissions_644 }}"
       become: true
 
     - name: Update CA trust
-      ansible.builtin.command: update-ca-trust
+      ansible.builtin.command: "{{ _ca_update_cmd }}"
       changed_when: false
+      become: true
 
 - name: Generate base image config
   ansible.builtin.include_tasks: generate_base_config.yml

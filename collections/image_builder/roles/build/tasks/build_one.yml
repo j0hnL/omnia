@@ -20,7 +20,7 @@
       {{ _builder_bin }} build \
         --config {{ _build_item.config }} \
         --log-level {{ build_log_level | default('info') }} \
-        {% if target_arch != ansible_architecture | default('x86_64') %}
+        {% if target_arch != (ansible_architecture | default('x86_64')) %}
         --arch {{ target_arch }} \
         {% endif %}
         2>&1 | tee {{ build_log_dir }}/{{ _build_item.name }}.log
@@ -47,7 +47,7 @@
         build \
           --config {{ _build_item.config }} \
           --log-level {{ build_log_level | default('info') }} \
-          {% if target_arch != ansible_architecture | default('x86_64') %}
+          {% if target_arch != (ansible_architecture | default('x86_64')) %}
           --arch {{ target_arch }} \
           {% endif %}
         2>&1 | tee {{ build_log_dir }}/{{ _build_item.name }}.log
@@ -60,7 +60,7 @@
 
 - name: "Set build result for {{ _build_item.name }}"
   ansible.builtin.set_fact:
-    _last_build_result: "{{ _build_result_bin if _builder_method == 'host-binary' else _build_result_ctr }}"
+    _last_build_result: "{{ _build_result_bin | default({}) if _builder_method == 'host-binary' else _build_result_ctr | default({}) }}"
 
 - name: "Display build result for {{ _build_item.name }}"
   ansible.builtin.debug:
@@ -73,6 +73,5 @@
   ansible.builtin.include_tasks: export_pxe_artifacts.yml
   vars:
     _export_image_name: "localhost/{{ registry_ns | default('images') }}/{{ _build_item.name }}:{{ os_version }}"
-    _export_group_name: "{{ _build_item.functional_group | default('base') if _build_item.type == 'compute' else 'base' }}"
+    _export_group_name: "{{ _build_item.name }}"
     _export_label: "{{ _build_item.name }}"
-  when: _build_item.type == 'base'
