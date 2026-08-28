@@ -415,7 +415,7 @@ buildah operations, and publishing.
 │     │    - type: registry  (optional)                     │      │
 │     │    - type: s3        (optional)                     │      │
 │     └─────────────────────────────────────────────────────┘      │
-│     For cross-build: adds --arch aarch64 + QEMU binfmt_misc     │
+│     For cross-build: QEMU binfmt_misc handles arch emulation    │
 │                                                                  │
 │  3. EXPORT (PXE artifacts)                                       │
 │     Extract vmlinuz from /boot/ or /lib/modules/                 │
@@ -773,6 +773,48 @@ for ready-to-use configurations.
 | Offline builds | Requires Pulp | Built-in local mirror (containerized nginx) |
 | CI/CD | Manual | Argo Workflows, GitOps-ready |
 | Infrastructure | Requires OIM + Pulp + registry | No infrastructure required |
+
+## Known Limitations
+
+### Rootless podman
+
+The collection supports rootless podman, but some configurations require
+additional host setup:
+
+- **SELinux**: The build role passes `--security-opt label=disable` to podman.
+  If QEMU binfmt_misc is registered for cross-builds, SELinux may block the
+  QEMU interpreter. Set a targeted SELinux boolean or run with
+  `setenforce 0` during cross-builds.
+- **UID namespaces**: Container images with high-UID users (e.g. Wolfi's
+  `nonroot` at UID 65532) require sufficient subordinate UIDs in
+  `/etc/subuid` and `/etc/subgid`. Ensure at least 100000 subordinate UIDs
+  are allocated for the build user.
+- **Storage root**: The build role auto-detects the podman storage root
+  (rootless: `~/.local/share/containers`, root: `/var/lib/containers`) and
+  bind-mounts it into the build container.
+
+### Cross-architecture builds (aarch64 on x86_64)
+
+Cross-builds require QEMU binfmt_misc registration and a working QEMU
+user-static binary on the host. The `setup_qemu` task handles registration
+via the `multiarch/qemu-user-static` container, but this requires root
+privileges (or `sudo`).
+
+Currently, cross-builds with `from: scratch` work for RPM-based distros
+when image-thrillhouse runs as a host binary. When running image-thrillhouse
+in a container, the nested container's DNF may not correctly resolve the
+target architecture. This is an upstream image-thrillhouse limitation —
+the `--arch` flag only works with `--manifest` for multi-arch manifest
+builds, not standalone builds.
+
+### Squashfs output in container mode
+
+When image-thrillhouse runs inside a container, the squashfs publisher
+writes output to a path that must be bind-mounted from the host. If the
+output directory doesn't exist or has restrictive permissions, the publish
+step fails even though the image build succeeds. The build role creates the
+output directory before launching the build, but nested container path
+resolution can still cause issues in some configurations.
 
 ## Contributing
 
