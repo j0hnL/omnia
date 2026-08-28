@@ -20,9 +20,6 @@
       {{ _builder_bin }} build \
         --config {{ _build_item.config }} \
         --log-level {{ build_log_level | default('info') }} \
-        {% if target_arch != (ansible_architecture | default('x86_64')) %}
-        --arch {{ target_arch }} \
-        {% endif %}
         2>&1 | tee {{ build_log_dir }}/{{ _build_item.name }}.log
     executable: /bin/bash
   environment:
@@ -40,9 +37,10 @@
     cmd: |
       set -euo pipefail
       podman run --rm --privileged --network host \
+        --security-opt label=disable \
         -v {{ work_dir }}:{{ work_dir }}:z \
         -v {{ output_dir }}:{{ output_dir }}:z \
-        -v /var/lib/containers:/var/lib/containers:z \
+        -v {{ _container_storage_dir }}:{{ _container_storage_dir }}:z \
         {% if ca_cert_path | default('') | length > 0 %}
         -v {{ ca_cert_path }}:/etc/pki/ca-trust/source/anchors/ca.crt:ro \
         {% endif %}
@@ -51,12 +49,9 @@
         -e "S3_SECRET={{ s3_secret_key | default('') }}" \
         {% endif %}
         {{ image_thrillhouse_container }} \
-        build \
+        image-thrillhouse build \
           --config {{ _build_item.config }} \
           --log-level {{ build_log_level | default('info') }} \
-          {% if target_arch != (ansible_architecture | default('x86_64')) %}
-          --arch {{ target_arch }} \
-          {% endif %}
         2>&1 | tee {{ build_log_dir }}/{{ _build_item.name }}.log
     executable: /bin/bash
   register: _build_result_ctr
