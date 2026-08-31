@@ -1,222 +1,183 @@
-# Building Bootable Linux Images in One Command: Inside Omnia Open Image Builder
+# Building Bootable Linux Images in One Command
 
-*How we built an Ansible collection that turns seven Linux distros into PXE-bootable HPC and AI cluster images — with zero host dependencies, cross-architecture support, and air-gapped builds.*
+*An Ansible collection that turns a YAML file into a PXE-bootable squashfs. Seven distros, two architectures, zero host dependencies beyond podman.*
 
 ---
 
-## The Problem Nobody Wants to Talk About
+## The Dirty Secret of HPC Cluster Deployments
 
-Every HPC and AI cluster starts the same way: someone has to build the OS images.
+Nobody brags about their image build process at conferences. That's because
+most of them are embarrassing.
 
-Not the fun part — not the Slurm configuration, not the GPU driver tuning, not the InfiniBand optimization. The unglamorous, tedious, error-prone process of producing a bootable Linux root filesystem that can be served over PXE to hundreds or thousands of bare-metal nodes.
+The typical HPC image pipeline falls into one of three categories, all bad:
 
-In most organizations, this process looks like one of these:
+1. **The golden image.** Somebody installed Rocky on a reference node in 2019,
+   ran a bunch of `yum install` commands they half-remember, snapshotted the
+   disk, and copied it to the PXE server. That person left the company two
+   years ago. Nobody touches the image. Nobody *can* touch the image.
 
-- **The golden image.** One engineer manually installs an OS on a reference node, configures it by hand, snapshots the disk, and copies it to a PXE server. Nobody else knows how to reproduce it. When that engineer leaves, the image becomes a black box.
+2. **The script pile.** Forty shell scripts in a directory called `build_stuff/`,
+   written by three different people over five years, with hardcoded paths to
+   a build server that was decommissioned in 2023. The scripts work if you
+   squint hard enough and happen to be running the exact same RHEL minor
+   release as the original author.
 
-- **The script pile.** A collection of shell scripts accumulated over years, calling `yum install`, `dracut`, `mksquashfs` in sequence, with hardcoded paths and assumptions about the host OS. It works on the build server it was written for. It breaks everywhere else.
+3. **The enterprise provisioner.** Foreman, Cobbler, or MAAS — each requiring
+   its own database, web UI, and a full-time administrator who becomes the
+   single point of failure the "golden image" approach was supposed to avoid.
 
-- **The heavyweight provisioner.** Deploy Foreman, Cobbler, or MAAS — full lifecycle provisioning platforms that require their own infrastructure, databases, and operational overhead. Overkill when you just need to produce an image.
-
-We built `omnia.open_image_builder` because we wanted something that didn't exist: a tool that builds production-quality PXE-bootable images from a declarative YAML file, runs on any Linux machine, requires nothing installed beyond `podman` and Ansible, and supports every major distro, architecture, and deployment scenario HPC and AI clusters actually encounter.
-
-## What We Built
-
-The core idea is simple: **containerize everything**.
-
-Instead of requiring the build host to have `dnf`, `debootstrap`, `dracut`, `createrepo`, or any other packaging tool installed, everything is handled by [OpenCHAMI image-thrillhouse](https://github.com/OpenCHAMI/image-thrillhouse) — a purpose-built tool that orchestrates `buildah`, package managers, and image publishing. The build host only needs `podman`, `buildah`, and Ansible. If `image-thrillhouse` isn't installed locally, it runs as a container automatically.
-
-This means you can build a Rocky Linux 10 image from an Ubuntu 24.04 laptop. You can build an AlmaLinux 9 image from a Fedora workstation. The host OS is irrelevant.
-
-### The Architecture
-
-The build pipeline has two Ansible roles backed by image-thrillhouse:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Build Host                                                      │
-│                                                                  │
-│  1. CONFIG_GEN (Ansible role)                                    │
-│     Resolve packages, repos, RHEL subscription                   │
-│     Generate image-thrillhouse YAML configs:                     │
-│       configs/base.yaml          (base image)                    │
-│       configs/<fg_name>.yaml     (per-compute-group)             │
-│       configs/build_manifest.yml (build order)                   │
-│                                                                  │
-│  2. BUILD (Ansible role → image-thrillhouse)                     │
-│     For each config in build_manifest.yml:                       │
-│     ┌─────────────────────────────────────────────────────┐      │
-│     │ image-thrillhouse build --config <config>.yaml      │      │
-│     │                                                     │      │
-│     │  meta:                                              │      │
-│     │    name: rocky-x86_64_base                          │      │
-│     │    from: scratch                                    │      │
-│     │  layer:                                             │      │
-│     │    manager: { name: dnf, options: {releasever: 10}} │      │
-│     │    repos: [{path: ..., content: ...}]               │      │
-│     │    actions: { install: {groups: [...], packages: [..]}│      │
-│     │  publish:                                           │      │
-│     │    - type: local                                    │      │
-│     │    - type: squashfs                                 │      │
-│     │    - type: registry  (optional)                     │      │
-│     │    - type: s3        (optional)                     │      │
-│     └─────────────────────────────────────────────────────┘      │
-│     For cross-build: adds --arch aarch64 + QEMU binfmt_misc     │
-│                                                                  │
-│  3. EXPORT (PXE artifacts)                                       │
-│     Extract vmlinuz from /boot/ or /lib/modules/                 │
-│     Extract initramfs.img from /boot/                            │
-│     Generate manifest.json + SHA256SUMS                          │
-│                                                                  │
-│  Output: <work_dir>/output/<image>/                              │
-│    rootfs          (squashfs, zstd compressed)                   │
-│    vmlinuz         (kernel binary)                               │
-│    initramfs.img   (dracut initramfs)                            │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-The `config_gen` role translates your Ansible variables into image-thrillhouse's declarative YAML config format (`meta`/`layer`/`publish` schema). Then `image-thrillhouse` handles everything — package installation, buildah operations, initramfs generation, squashfs export, and optional publishing to registries or S3. The Ansible `build` role simply invokes `image-thrillhouse build` for each config.
-
-### One Command, Seven Operating Systems
+We built `omnia.open_image_builder` because we wanted to type one command and
+get a bootable squashfs. Not "one command after you deploy three services and
+configure a database." One actual command.
 
 ```bash
-# Rocky Linux 10
-ansible-playbook omnia.open_image_builder.build_x86_64 -e @rocky.yml
-
-# Ubuntu 24.04
-ansible-playbook omnia.open_image_builder.build_x86_64 -e @ubuntu.yml
-
-# RHEL 9.5 (with subscription repos)
-ansible-playbook omnia.open_image_builder.build_x86_64 -e @rhel.yml
+ansible-playbook omnia.open_image_builder.build -e @my_image.yml
 ```
 
-The collection handles the differences automatically. RPM-based distros (RHEL, AlmaLinux, Rocky, Fedora) use `dnf` + `dracut`. Debian-based distros (Ubuntu, Debian) use `mmdebstrap` + `update-initramfs`. Wolfi uses a parent build from `wolfi-base` with `apk add` commands. The user provides the same YAML structure regardless — `os_family`, `os_version`, `repos`, `base_image_packages` — and the collection selects the right package manager and initramfs tool via image-thrillhouse.
+## How It Works
 
-The seventh OS — [Wolfi](https://wolfi.dev) — is worth calling out. Created by Chainguard, Wolfi is a Linux distribution built from the ground up for container and supply-chain security. Every package is compiled from source with build-time SBOMs, it uses glibc (unlike Alpine's musl), and packages are designed to be granular and independent. The practical result is images that are a fraction of the size of traditional distros: a Wolfi base image with core utilities comes in at ~39 MB compared to ~870 MB for a Rocky or AlmaLinux equivalent. For HPC environments where hundreds of nodes pull images over the network, or air-gapped environments with limited storage, the difference is significant. Wolfi doesn't have a kernel or dracut (it's a container-native distro), so it won't replace RHEL for bare-metal PXE boot, but for containerized workloads and lightweight compute images it's a compelling option.
+The entire build runs inside containers. The host needs `podman` and Ansible.
+That's the full dependency list.
 
-This isn't just convenience. It means the same CI pipeline, the same Argo Workflow, the same operational process can produce images for any supported OS. When your cluster needs to migrate from CentOS to Rocky, or add Ubuntu nodes for a specific workload, you change a YAML file, not your tooling.
+[OpenCHAMI image-thrillhouse](https://github.com/OpenCHAMI/image-thrillhouse)
+does the heavy lifting — it wraps `buildah` with package manager orchestration
+and image publishing. Our Ansible collection generates the config YAML that
+drives it and handles the operational details: QEMU setup for cross-builds,
+repo mirroring for air-gapped environments, and S3/registry publishing.
 
-## The Parts That Were Hard
+The pipeline:
 
-### Cross-Architecture Builds
+1. **config_gen** — translates your Ansible vars into image-thrillhouse YAML
+2. **build** — runs `image-thrillhouse build --config <file>` for each image
+3. **export** — pulls kernel + initramfs out of the built image for PXE
 
-HPC and AI clusters increasingly use ARM64 processors — NVIDIA Grace, AWS Graviton, Ampere Altra. Building ARM64 images traditionally requires ARM64 hardware, which most build environments don't have.
+You provide `os_family`, `repos`, and `base_image_packages`. The collection
+picks the right package manager (`dnf` for RPM, `mmdebstrap` for Debian, `apk`
+for Wolfi), generates the correct config, and produces a squashfs.
 
-We solved this with **QEMU user-mode emulation**. The `build` role registers QEMU binfmt handlers via `podman run --privileged multiarch/qemu-user-static`, then passes `--arch aarch64` to `image-thrillhouse build`. The entire build runs under transparent emulation — `image-thrillhouse` handles the `dnf` invocation, RPM scriptlet execution, and `dracut` initramfs generation using QEMU's user-mode binary translation.
+Seven distros work today: RHEL, AlmaLinux, Rocky, Fedora, Ubuntu, Debian, and
+Wolfi. Same YAML structure for all of them. The host OS doesn't matter — build
+Rocky images on Ubuntu, build Fedora images on RHEL, nobody cares.
 
-The download phase runs at native x86_64 speed (the dnf process itself is x86_64). Only RPM post-install scriptlets and `dracut` — which must execute ARM64 binaries — run under emulation at ~4x slower speed.
+## What It Actually Costs You
 
-```bash
-# Build ARM64 images on your x86_64 workstation
-ansible-playbook omnia.open_image_builder.build_aarch64 \
-  -e @examples/standalone_aarch64_crossbuild.yml
+Real numbers from a Dell PowerEdge (2x Xeon Gold 6330, NVMe, RHEL 10.2):
+
+| Build | Time | Squashfs | Packages |
+|---|---|---|---|
+| Rocky 10 x86_64 | 6m 48s | 865 MB | 436 |
+| Wolfi x86_64 | 6m 10s | 39 MB | 15 |
+| Rocky 10 aarch64 (cross) | 21m 23s | 724 MB | 432 |
+
+The Wolfi number is not a typo. 39 MB for a usable Linux image. Chainguard
+built Wolfi with granular packages and no legacy cruft — you get exactly what
+you install and nothing else. It won't PXE-boot bare metal (no kernel), but
+for containerized HPC workloads where image transfer time matters, it's hard
+to argue with 39 MB vs 865 MB.
+
+## Cross-Architecture Builds Without ARM Hardware
+
+This was the part that took the most iteration to get right.
+
+The goal: build aarch64 images on an x86_64 machine. No ARM build server, no
+cross-compilation toolchain, no tears.
+
+The approach: QEMU user-mode emulation. Register binfmt_misc handlers for
+aarch64, then let DNF install ARM packages into a scratch container. RPM
+scriptlets (depmod, ldconfig, kernel-install) execute aarch64 binaries
+transparently under QEMU. dracut runs under emulation too.
+
+The trick is in the DNF config. We don't pass any architecture flag to
+image-thrillhouse — it doesn't need to know. The `config_gen` role detects
+when `target_arch` differs from the host and injects two lines into the
+generated `dnf.conf`:
+
+```ini
+[main]
+arch=aarch64
+ignorearch=True
 ```
 
-### Layered Compute Images
+That's it. DNF fetches aarch64 packages, RPM installs them with QEMU handling
+the scriptlets, and image-thrillhouse never knows the difference. The download
+phase runs at native x86_64 speed. Only the scriptlets and dracut — which must
+execute ARM binaries — take the QEMU hit, roughly 3x slower than native.
 
-A real HPC cluster doesn't have one image. It has a shared base image (kernel, SSH, networking) and per-role compute images layered on top:
+21 minutes for a full aarch64 image on x86_64 hardware. Not fast, but fast
+enough to run nightly in CI without dedicated ARM infrastructure.
+
+**One caveat:** this approach works for scratch builds (RPM-based distros)
+because the package manager controls the architecture. For parent-image builds
+like Wolfi, cross-arch requires image-thrillhouse's `--manifest` + `--arch`
+mode to pull the correct platform variant of the base image.
+
+## Layered Images for Real Clusters
+
+A production HPC cluster doesn't run one image. The Slurm controller needs
+`slurmctld` and `mariadb`. Compute nodes need `slurmd`, `hwloc`, `ucx`, and
+`pmix`. GPU nodes need all of that plus NVIDIA drivers and CUDA. Login nodes
+need `lmod` and `environment-modules`.
+
+The collection handles this with `compute_images_dict`:
 
 ```yaml
 compute_images_dict:
   slurm_control_node:
-    functional_group: slurm_control_node
     packages: [slurm-slurmctld, slurm-slurmdbd, munge, mariadb-server]
   slurm_node:
-    functional_group: slurm_node
     packages: [slurm-slurmd, munge, hwloc, numactl, ucx, pmix]
   gpu_node:
-    functional_group: gpu_node
     packages: [slurm-slurmd, munge, nvidia-driver, cuda-toolkit]
 ```
 
-The `config_gen` role generates a separate image-thrillhouse config for each compute group. Each compute config uses `meta.from:` to reference the base image, so image-thrillhouse layers the role-specific packages on top of the shared base. The output is a set of squashfs files that share the same base but have role-specific packages installed:
+Each entry gets its own image-thrillhouse config, layered on top of the shared
+base. One playbook run, one base image, N compute images. Each is a
+self-contained squashfs with its own kernel and initramfs.
 
-```
-output/
-├── base/                        ← kernel, dracut, SSH, NFS, RDMA
-├── slurm_control_node_x86_64/  ← slurmctld + mariadb
-├── slurm_node_x86_64/          ← slurmd + hwloc + ucx + pmix
-└── gpu_node_x86_64/            ← slurmd + NVIDIA + CUDA
-```
+## Air-Gapped Builds
 
-This is the image equivalent of multi-stage container builds. Each compute image is self-contained but shares the base layer's kernel and initramfs.
-
-### Air-Gapped Builds
-
-Government, defense, and high-security HPC environments can't reach the internet during builds. The `repo_mirror` role handles this by first syncing upstream RPM repositories to a local directory, rebuilding the repo metadata, and serving the mirror via an nginx container. Then the image build uses only the local mirror — fully disconnected.
+Some environments can't touch the internet. The `repo_mirror` role syncs
+upstream repos to a local directory served by nginx in a container. First run
+needs the network. After that, zero external access.
 
 ```bash
-# Phase 1: Sync packages (requires internet)
-ansible-playbook omnia.open_image_builder.build_x86_64 \
+ansible-playbook omnia.open_image_builder.build \
   -e @examples/offline_x86_64.yml -e use_local_mirror=true
-
-# Phase 2: Build images (fully offline)
-# Same command — the mirror is cached locally
 ```
 
-## The CI/CD Story
+Budget ~9 GB for the local mirror (BaseOS + AppStream), ~3 GB per built image.
 
-The collection ships with production-ready Argo Workflows manifests for Kubernetes-based CI/CD. A nightly CronWorkflow builds fresh images automatically:
+## The Omnia Connection
 
-```bash
-# One-time setup on a k3s cluster
-podman build -t ghcr.io/dell/omnia-open-image-builder:latest -f argo/Containerfile .
-kubectl apply --server-side -k argo/
-argo submit argo/workflow.yaml -n image-builder --watch
-```
+If you run Dell Omnia, the collection reads your `software_config.json`
+directly. It replaces the built-in image builder with seven-distro support,
+containerized builds, and cross-architecture ARM — no host-installed `dnf`,
+`mksquashfs`, or `mc` required.
 
-The workflow runs a privileged container (required for `buildah`), mounts a PVC for workspace and output, and builds a complete Rocky/AlmaLinux image in under 7 minutes. The ConfigMap holds all build configuration — OS, repos, packages — as a single YAML file.
+If you don't run Omnia, the collection works standalone. No dependency on
+Omnia's infrastructure, software catalog, or operational model. Just an
+Ansible collection you install from Galaxy.
 
-RBAC is scoped to the `image-builder` namespace with minimal permissions: read-only access to pods, configmaps, and PVCs, plus write access to Argo's `workflowtaskresults`. No cluster-admin, no cross-namespace access.
+## What's Left
 
-## What This Means for HPC and AI
-
-### For HPC Administrators
-
-The "golden image" problem is solved. Image definitions are declarative YAML files that live in version control. Anyone on the team can build, modify, or audit them. When you need to add a package, patch a vulnerability, or upgrade the kernel, you edit a YAML file and re-run the playbook. The result is reproducible and verifiable — every image ships with `manifest.json` (build metadata and SHA256 checksums) and `SHA256SUMS` for integrity verification.
-
-### For AI/ML Infrastructure Teams
-
-GPU node images with CUDA and NVIDIA drivers pre-baked, ARM64 cross-builds for Grace Hopper deployments without ARM build hardware, and layered images that let you maintain a single base while customizing per-workload (training nodes vs. inference nodes vs. data preprocessing nodes).
-
-### For Omnia Users
-
-If you already run Dell Omnia, the collection reads your `software_config.json` directly — no manual package lists. It replaces Omnia's built-in image builder with broader OS support (seven distros instead of RHEL-only), fully containerized builds (no host-installed `dnf`, `mksquashfs`, or `mc`), and cross-architecture ARM builds that don't require dedicated ARM hardware. The build process needs only `podman` and `buildah` on the host; everything else runs in containers. And because it's an Ansible collection, it fits into the same operational model you're already using for cluster management.
-
-### For Teams Without Omnia
-
-The collection works as a standalone tool with zero Omnia dependency. If you need to produce PXE-bootable images — or just squashfs root filesystems for any purpose — and you don't want to deploy Warewulf, Foreman, or a custom script pile, this is the lightweight option. You provide a YAML file with your OS, repos, and packages. The collection handles the rest: package installation, initramfs generation, squashfs compression, and optional publishing to registries or S3. It runs on any Linux machine, builds any of seven distros regardless of the host OS, and produces verifiable output with checksums and build manifests.
-
-### For the Open-Source Community
-
-Nothing like this exists as a standalone, portable tool. The closest alternatives are:
-
-| Tool | Limitation |
-|---|---|
-| **Warewulf** | Tightly coupled to its own provisioning stack |
-| **lorax/livemedia-creator** | Fedora/RHEL only, requires matching host OS |
-| **live-build** | Debian only |
-| **Foreman/Cobbler** | Full provisioning platforms with heavy operational overhead |
-| **Packer** | VM images, not bare-metal PXE images |
-
-`omnia.open_image_builder` fills the gap between "write your own shell scripts" and "deploy an entire provisioning platform." It's an Ansible collection — install it, write a YAML file, run a playbook. If you already use Ansible for cluster management (and in HPC, you almost certainly do), this slots directly into your existing workflow.
+- **Image signing** — cosign/sigstore integration and SBOM generation
+- **More distros** — SUSE/openSUSE, Azure Linux, Alpine
+- **Faster cross-builds** — native ARM CI instead of QEMU emulation
+- **Boot testing** — automated QEMU boot validation in CI
 
 ## Try It
 
 ```bash
-# Install
 ansible-galaxy collection install omnia.open_image_builder
 
-# Build a Rocky Linux 10 image
-ansible-playbook omnia.open_image_builder.build_x86_64 \
-  -e @examples/standalone_x86_64.yml
-
-# Verify it
-tools/validate_image.sh /var/lib/image-builder/output/base
+ansible-playbook omnia.open_image_builder.build \
+  -e @examples/rocky_x86_64.yml
 ```
 
-The images are at `/var/lib/image-builder/output/`. Serve them over HTTP, point your PXE configuration at them, and boot your cluster.
+Images land in `/var/lib/image-builder/output/`. Serve over HTTP, point PXE
+at them, boot your cluster.
 
 ---
 
-*The `omnia.open_image_builder` collection is part of the [Omnia](https://github.com/dell/omnia) project by Dell Technologies. It works standalone or integrated with the broader Omnia HPC/AI cluster management platform. Apache 2.0 licensed.*
+*`omnia.open_image_builder` is part of [Omnia](https://github.com/dell/omnia)
+by Dell Technologies. Apache 2.0.*

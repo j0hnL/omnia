@@ -30,6 +30,10 @@ layer:
       install_weak_deps=False
       tsflags=nodocs
       reposdir=/etc/image-thrillhouse/yum.repos.d
+{% if target_arch | default('x86_64') != ansible_architecture | default('x86_64') %}
+      arch={{ target_arch }}
+      ignorearch=True
+{% endif %}
 {% elif _pkg_manager == 'mmdebstrap' %}
     options:
       suite: '{{ os_version_codename | default(_deb_codename) }}'

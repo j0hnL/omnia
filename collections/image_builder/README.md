@@ -415,7 +415,7 @@ buildah operations, and publishing.
 │     │    - type: registry  (optional)                     │      │
 │     │    - type: s3        (optional)                     │      │
 │     └─────────────────────────────────────────────────────┘      │
-│     For cross-build: QEMU binfmt_misc handles arch emulation    │
+│     For cross-build: DNF arch= config + QEMU binfmt_misc       │
 │                                                                  │
 │  3. EXPORT (PXE artifacts)                                       │
 │     Extract vmlinuz from /boot/ or /lib/modules/                 │
@@ -441,9 +441,9 @@ buildah operations, and publishing.
 
 The RPM scriptlets (post-install scripts for kernel, systemd, etc.) must run
 the target architecture's binaries. On cross-builds, QEMU user-mode emulation
-handles this transparently but at ~4× slower speed. The actual package
-download and unpacking is always native x86_64 speed because `dnf --forcearch`
-only changes the package architecture, not the dnf process itself.
+handles this transparently but at ~3× slower speed. The actual package
+download and unpacking is always native x86_64 speed because `arch=aarch64`
+in `dnf.conf` only changes the package architecture, not the dnf process itself.
 
 ### Offline / air-gapped builds
 
@@ -619,10 +619,10 @@ podman 5.8.2 / buildah 1.43.2.
 
 | OS | Total build time | Squashfs size | Notes |
 |---|---|---|---|
-| **Rocky 10** | **6m 44s** | 868 MB | install 4m 36s, dracut 59s |
+| **Rocky 10** | **6m 48s** | 865 MB | install 4m 39s, dracut 1m 0s |
 | **AlmaLinux 10** | **5m 55s** | 884 MB | install 3m 48s, dracut 60s |
 | **Fedora 44** | **5m 11s** | 874 MB | install 4m 01s |
-| **Wolfi** | **6m 14s** | 39 MB | apk add, no kernel/dracut |
+| **Wolfi** | **6m 10s** | 39 MB | apk add, no kernel/dracut |
 
 **RPM-based builds** (Rocky, AlmaLinux, Fedora) install 10 base packages plus
 "Minimal Install" and "Development Tools" groups (~300-420 total packages).
@@ -638,11 +638,17 @@ and install 15 packages via `apk add`. The squashfs is much smaller (39 MB vs
 > containers. Use a direct mirror URL instead, e.g.
 > `https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os`.
 
-#### aarch64 cross-build
+#### aarch64 cross-build (measured)
+
+| OS | Total build time | Squashfs size | Notes |
+|---|---|---|---|
+| **Rocky 10** | **21m 23s** | 724 MB | install 13m 46s, dracut ~6m (QEMU emulated) |
 
 Cross-builds add QEMU user-mode emulation for ARM64 binaries. RPM post-install
 scriptlets (depmod, kernel-install, ldconfig) and dracut run under emulation at
-~4× slower speed. Package download and unpacking run at native x86_64 speed.
+~3× slower speed. Package download and unpacking run at native x86_64 speed.
+The `config_gen` role automatically sets `arch=aarch64` and `ignorearch=True` in
+the DNF config when `target_arch` differs from the host architecture.
 
 #### Offline/air-gapped builds
 
@@ -778,43 +784,35 @@ for ready-to-use configurations.
 
 ### Rootless podman
 
-The collection supports rootless podman, but some configurations require
-additional host setup:
+The build role runs the image-thrillhouse container with `--user root` and
+`--privileged` to ensure full access to build operations. Running with
+`sudo` is recommended for reliable builds.
 
 - **SELinux**: The build role passes `--security-opt label=disable` to podman.
   If QEMU binfmt_misc is registered for cross-builds, SELinux may block the
-  QEMU interpreter. Set a targeted SELinux boolean or run with
-  `setenforce 0` during cross-builds.
-- **UID namespaces**: Container images with high-UID users (e.g. Wolfi's
-  `nonroot` at UID 65532) require sufficient subordinate UIDs in
-  `/etc/subuid` and `/etc/subgid`. Ensure at least 100000 subordinate UIDs
-  are allocated for the build user.
-- **Storage root**: The build role auto-detects the podman storage root
-  (rootless: `~/.local/share/containers`, root: `/var/lib/containers`) and
-  bind-mounts it into the build container.
+  QEMU interpreter. Set `setenforce 0` during cross-builds, or configure a
+  targeted SELinux boolean for the QEMU binary.
 
 ### Cross-architecture builds (aarch64 on x86_64)
 
 Cross-builds require QEMU binfmt_misc registration and a working QEMU
 user-static binary on the host. The `setup_qemu` task handles registration
-via the `multiarch/qemu-user-static` container, but this requires root
-privileges (or `sudo`).
+via the `multiarch/qemu-user-static` container.
 
-Currently, cross-builds with `from: scratch` work for RPM-based distros
-when image-thrillhouse runs as a host binary. When running image-thrillhouse
-in a container, the nested container's DNF may not correctly resolve the
-target architecture. This is an upstream image-thrillhouse limitation —
-the `--arch` flag only works with `--manifest` for multi-arch manifest
-builds, not standalone builds.
+RPM-based cross-builds use `from: scratch` with `arch=<target>` and
+`ignorearch=True` set in DNF config to install target-architecture packages.
+RPM scriptlets and dracut run under QEMU user-mode emulation at ~3x slower
+speed.
+
+Parent-image cross-builds (e.g. Wolfi aarch64) require `--manifest` + `--arch`
+mode so image-thrillhouse pulls the correct platform variant of the base image.
 
 ### Squashfs output in container mode
 
-When image-thrillhouse runs inside a container, the squashfs publisher
-writes output to a path that must be bind-mounted from the host. If the
-output directory doesn't exist or has restrictive permissions, the publish
-step fails even though the image build succeeds. The build role creates the
-output directory before launching the build, but nested container path
-resolution can still cause issues in some configurations.
+The build role runs image-thrillhouse with `--user root` to ensure the
+container process can create output directories and write squashfs files.
+The work directory and output directory are bind-mounted from the host into
+the container.
 
 ## Contributing
 

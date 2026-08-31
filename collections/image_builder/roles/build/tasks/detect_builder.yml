@@ -41,16 +41,10 @@
       delay: 10
       until: _pull_result is not failed
 
-    - name: Detect podman storage root
-      ansible.builtin.command: podman info --format '{{ '{{' }}.Store.GraphRoot{{ '}}' }}'
-      register: _podman_graph_root
-      changed_when: false
-
     - name: Set container builder facts
       ansible.builtin.set_fact:
         _builder_method: "container"
         _use_container_builder: true
-        _container_storage_dir: "{{ _podman_graph_root.stdout | trim | dirname }}"
 
 - name: Display builder detection result
   ansible.builtin.debug:
