@@ -1,0 +1,55 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+- name: Install CA certificate (optional)
+  when: ca_cert_path | default('') | length > 0
+  block:
+    - name: Copy CA certificate to anchors
+      ansible.builtin.copy:
+        src: "{{ ca_cert_path }}"
+        dest: "{{ anchors_path }}"
+        mode: "{{ dir_permissions_644 }}"
+      become: true
+
+    - name: Update CA trust
+      ansible.builtin.command: update-ca-trust
+      changed_when: false
+
+- name: Create cross-build workspace directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "{{ dir_permissions_755 }}"
+  loop:
+    - "{{ cross_build_root }}"
+    - "{{ cross_build_root }}/installroot"
+    - "{{ build_config_dir }}"
+    - "{{ build_log_dir }}"
+
+- name: Set dnf container image based on os_family
+  ansible.builtin.set_fact:
+    _dnf_container_image: >-
+      {{ {'rhel': 'docker.io/library/almalinux:' + os_version.split('.')[0],
+          'almalinux': 'docker.io/library/almalinux:' + os_version.split('.')[0],
+          'rocky': 'docker.io/library/almalinux:' + os_version.split('.')[0],
+          'fedora': 'docker.io/library/fedora:' + os_version.split('.')[0]
+         }[os_family | default('rhel')] }}
+
+- name: Display OS target
+  ansible.builtin.debug:
+    msg: "Target OS: {{ os_family }} {{ os_version }} ({{ target_arch }}) — dnf container: {{ _dnf_container_image }}"
+
+- name: Set image naming suffixes
+  ansible.builtin.set_fact:
+    image_suffix: "{{ image_name_suffix | default('') }}"
+    k8s_suffix: "_k8s_{{ service_k8s_version | default('') }}"
+    base_image_suffix: ""
+    compute_image_suffix: ""
+
+- name: Set S3 credentials
+  ansible.builtin.set_fact:
+    s3_access: "{{ s3_access_id | default('', true) }}"
+    s3_secret: "{{ s3_secret_key | default('') }}"
+  no_log: true
+  when: publish_s3 | default(false) | bool

@@ -1,0 +1,92 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Auto-deploy a local MinIO container for S3-compatible object storage.
+# This runs when publish_s3=true but no external s3_endpoint is provided.
+---
+
+- name: Generate MinIO credentials if not provided
+  ansible.builtin.set_fact:
+    minio_root_user: "{{ minio_root_user if minio_root_user | default('') | length > 0 else 'admin-' + lookup('password', '/dev/null chars=ascii_lowercase,digits length=8') }}"
+    minio_root_password: "{{ minio_root_password if minio_root_password | default('') | length > 0 else lookup('password', '/dev/null chars=ascii_letters,digits,punctuation length=24') }}"
+  no_log: true
+
+- name: Create MinIO data directory
+  ansible.builtin.file:
+    path: "{{ minio_data_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Check if MinIO container is already running
+  ansible.builtin.command: >
+    podman ps --filter name={{ minio_container_name }} --format {% raw %}"{{.Names}}"{% endraw %}
+  register: minio_running
+  changed_when: false
+  failed_when: false
+
+- name: Deploy MinIO container
+  when: minio_container_name not in (minio_running.stdout | default(''))
+  block:
+    - name: Remove stale MinIO container if exists
+      ansible.builtin.command: >
+        podman rm -f {{ minio_container_name }}
+      changed_when: true
+      failed_when: false
+
+    - name: Start MinIO container
+      ansible.builtin.command: >
+        podman run -d
+        --name {{ minio_container_name }}
+        --restart always
+        -p 127.0.0.1:{{ minio_port }}:9000
+        -p 127.0.0.1:{{ minio_console_port }}:9001
+        -e MINIO_ROOT_USER={{ minio_root_user }}
+        -e MINIO_ROOT_PASSWORD={{ minio_root_password }}
+        -v {{ minio_data_dir }}:/data:z
+        {{ minio_image }}
+        server /data --console-address :9001
+      register: minio_start
+      changed_when: true
+      no_log: true
+
+    - name: Wait for MinIO to be ready
+      ansible.builtin.uri:
+        url: "http://localhost:{{ minio_port }}/minio/health/ready"
+        method: GET
+        status_code: 200
+      register: minio_health
+      retries: 15
+      delay: 2
+      until: minio_health.status == 200
+
+- name: Set S3 endpoint to local MinIO
+  ansible.builtin.set_fact:
+    s3_endpoint: "http://localhost:{{ minio_port }}"
+    s3_access_id: "{{ minio_root_user }}"
+    s3_secret_key: "{{ minio_root_password }}"
+    _minio_auto_deployed: true
+  no_log: true
+
+- name: Create S3 bucket via containerized mc
+  block:
+    - name: Configure mc alias and create bucket
+      ansible.builtin.shell:
+        cmd: |
+          podman run --rm --network host \
+            --entrypoint /bin/sh \
+            docker.io/minio/mc \
+            -c '
+              mc alias set local http://localhost:{{ minio_port }} {{ minio_root_user }} {{ minio_root_password }}
+              mc mb --ignore-existing local/{{ s3_bucket }}
+            '
+        executable: /bin/bash
+      changed_when: true
+      no_log: true
+
+- name: Display MinIO status
+  ansible.builtin.debug:
+    msg:
+      - "MinIO auto-deployed at {{ s3_endpoint }}"
+      - "Console: http://localhost:{{ minio_console_port }}"
+      - "Bucket: {{ s3_bucket }}"
+      - "Credentials: set (use 'podman exec {{ minio_container_name }} env' to verify)"

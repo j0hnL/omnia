@@ -1,0 +1,16 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+- name: Set ACL to public for 'efi' bucket and all objects
+  ansible.builtin.command: s3cmd setacl s3://efi --acl-public --recursive
+  changed_when: true
+
+- name: Set ACL to public for 'boot-images' bucket and all objects
+  ansible.builtin.command: s3cmd setacl s3://boot-images --acl-public --recursive
+  changed_when: true
+
+- name: Verify S3 bucket ACLs are set
+  ansible.builtin.debug:
+    msg: "PowerScale S3 bucket ACLs set to public for PXE boot access"
+    verbosity: 2

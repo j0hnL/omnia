@@ -1,0 +1,17 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+software_config_file_path: "{{ input_project_dir }}/software_config.json"
+
+local_repo_check_msg: |
+  Failure: metadata file path {{ metadata_file_path }} is not present.
+  Please make sure that local_repo.yml playbook is executed successfully.
+
+functional_group_absent_msg: |
+  No functional groups found for the requested architecture in functional_group_config.yml.
+  Please make sure at least one functional group is present.
+
+build_stream_prerequisite_fail_msg: |
+  Build Stream mode is enabled. Manual execution is not supported.
+  Please trigger this workflow via the GitLab pipeline.

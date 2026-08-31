@@ -1,0 +1,149 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Build a Debian/Ubuntu base image using:
+#   1. Containerized debootstrap to create an installroot from apt repos
+#   2. apt install of kernel + live-boot + user packages (under chroot)
+#   3. buildah to import the rootfs, build initramfs, and commit
+#
+# Debian-family equivalent of build_base_image.yml (which uses dnf).
+---
+
+- name: Set base image name
+  ansible.builtin.set_fact:
+    _base_image_name: "{{ base_image_name }}"
+    _installroot: "{{ work_dir }}/installroot/base"
+
+- name: Clean installroot from previous builds
+  ansible.builtin.file:
+    path: "{{ _installroot }}"
+    state: absent
+
+- name: Create installroot directory
+  ansible.builtin.file:
+    path: "{{ _installroot }}"
+    state: directory
+    mode: "{{ dir_permissions_755 }}"
+
+# ── Phase 1: debootstrap + apt install (containerized) ─────────────────
+
+- name: "Bootstrap {{ os_family }} {{ os_version }} rootfs (containerized)"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      podman run --rm --privileged --network host \
+        -v {{ work_dir }}:/build:z \
+        -v {{ build_log_dir }}:/logs:z \
+        {{ _apt_container_image }} \
+        /bin/bash -c '
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update 2>/dev/null
+          apt-get install -y debootstrap 2>/dev/null
+
+          # Bootstrap the base system into the installroot
+          debootstrap --arch={{ _deb_arch }} --variant=minbase \
+            {{ os_version_codename | default(_deb_codename) }} \
+            /build/installroot/base \
+            {{ (repos | first).base_url if repos | default([]) | length > 0 else _deb_default_mirror }} \
+            2>&1 | tee -a /logs/{{ target_arch }}_base_image.log
+
+          # Configure apt sources inside the chroot
+          cat > /build/installroot/base/etc/apt/sources.list << SOURCES
+      {% for repo in repos | default([]) %}
+      deb {{ repo.base_url }} {{ os_version_codename | default(_deb_codename) }} {{ repo.components | default("main") }}
+      {% endfor %}
+      {% if repos | default([]) | length == 0 %}
+      deb {{ _deb_default_mirror }} {{ _deb_codename }} main universe
+      {% endif %}
+      SOURCES
+
+          # Install kernel, live-boot, and user packages in the chroot
+          mount -t proc proc /build/installroot/base/proc 2>/dev/null || true
+          mount -t sysfs sys /build/installroot/base/sys 2>/dev/null || true
+          chroot /build/installroot/base /bin/bash -c "
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update 2>/dev/null
+            apt-get install -y --no-install-recommends \
+              {{ _deb_kernel_pkg }} live-boot initramfs-tools systemd-sysv \
+              {{ base_image_packages | join(' ') }} \
+              2>&1
+          " 2>&1 | tee -a /logs/{{ target_arch }}_base_image.log
+          umount /build/installroot/base/proc 2>/dev/null || true
+          umount /build/installroot/base/sys 2>/dev/null || true
+        '
+    executable: /bin/bash
+  register: deb_bootstrap_result
+  changed_when: true
+
+- name: Display bootstrap result
+  ansible.builtin.debug:
+    msg: "Phase 1 complete: {{ os_family }} {{ os_version }} bootstrapped with {{ base_image_packages | length }} extra packages"
+
+# ── Phase 2: buildah import + initramfs + commit ───────────────────────
+
+- name: "Build {{ _base_image_name }} image via buildah"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+
+      # Import installroot as tarball (preserves symlinks)
+      echo "Creating rootfs tarball from installroot..."
+      tar -C {{ _installroot }} -cf {{ work_dir }}/rootfs.tar .
+
+      CTR=$(buildah from scratch)
+      buildah add "$CTR" {{ work_dir }}/rootfs.tar /
+      rm -f {{ work_dir }}/rootfs.tar
+      echo "Container: $CTR (rootfs imported)"
+
+      # Build the live-boot initramfs via update-initramfs (Debian's dracut)
+      SCRIPT="/tmp/initramfs_build.sh"
+      cat > "$SCRIPT" << 'INITRAMFS_EOF'
+      #!/bin/bash
+      set -x
+      export DEBIAN_FRONTEND=noninteractive
+      KVER=$(ls /lib/modules/ | head -1)
+      echo "Kernel version: $KVER"
+      if [ -z "$KVER" ]; then
+        echo "WARNING: No kernel modules found, skipping initramfs"
+        exit 0
+      fi
+      # live-boot hooks generate a squashfs-capable initramfs
+      update-initramfs -c -k "$KVER" 2>&1 || update-initramfs -u -k "$KVER" 2>&1
+      echo "=== initramfs built ==="
+      ls -lh /boot/
+      INITRAMFS_EOF
+      chmod +x "$SCRIPT"
+      buildah copy "$CTR" "$SCRIPT" /tmp/initramfs_build.sh
+      buildah run "$CTR" -- /bin/bash /tmp/initramfs_build.sh
+      rm -f "$SCRIPT"
+
+      # Commit
+      LOCAL_IMG="localhost/{{ registry_ns }}/{{ _base_image_name }}:{{ os_version }}"
+      buildah commit "$CTR" "$LOCAL_IMG"
+      echo "Committed: $LOCAL_IMG"
+
+      {% if registry_url | default('') | length > 0 %}
+      REMOTE_IMG="{{ registry_url }}/{{ registry_ns }}/{{ _base_image_name }}:{{ os_version }}"
+      buildah tag "$LOCAL_IMG" "$REMOTE_IMG"
+      buildah push {{ '--tls-verify=false' if not (registry_tls_verify | default(false) | bool) else '' }} \
+        "$REMOTE_IMG" "docker://$REMOTE_IMG"
+      {% endif %}
+
+      buildah rm "$CTR" || true
+      echo "=== Base image complete: {{ _base_image_name }}:{{ os_version }} ==="
+    executable: /bin/bash
+  register: buildah_result
+  changed_when: true
+
+- name: Export base image
+  ansible.builtin.include_tasks: "{{ role_path }}/../local_storage/tasks/export_image.yml"
+  vars:
+    _export_image_name: "localhost/{{ registry_ns }}/{{ _base_image_name }}:{{ os_version }}"
+    _export_group_name: "base"
+    _export_label: "{{ os_family }} {{ os_version }} base image"
+
+- name: Display base image result
+  ansible.builtin.debug:
+    msg:
+      - "Base image: {{ _base_image_name }}:{{ os_version }}"
+      - "Output: {{ output_dir | default(work_dir + '/output') }}/base/"

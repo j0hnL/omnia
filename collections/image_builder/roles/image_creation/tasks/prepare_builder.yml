@@ -1,0 +1,50 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+- name: Create build directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "{{ dir_permissions_755 }}"
+  loop:
+    - "{{ build_config_dir }}"
+    - "{{ build_log_dir }}"
+
+- name: Install CA certificate (optional)
+  when: ca_cert_path | default('') | length > 0
+  block:
+    - name: Copy CA certificate to anchors
+      ansible.builtin.copy:
+        src: "{{ ca_cert_path }}"
+        dest: "{{ anchors_path }}"
+        mode: "{{ dir_permissions_644 }}"
+      become: true
+
+    - name: Update CA trust
+      ansible.builtin.command: update-ca-trust
+      changed_when: false
+
+- name: Pull and tag image builder container
+  block:
+    - name: Pull image using Podman
+      containers.podman.podman_image:
+        name: "{{ image_builder_container }}"
+        state: present
+      register: pull_result
+      retries: "{{ pull_image_retries }}"
+      delay: "{{ pull_image_delay }}"
+      until: pull_result is not failed
+      changed_when: false
+
+    - name: Tag pulled image for build
+      containers.podman.podman_tag:
+        image: "{{ image_builder_container }}"
+        target_names:
+          - "{{ local_image_tag }}"
+      changed_when: false
+
+  rescue:
+    - name: Fail if Podman pull failed
+      ansible.builtin.fail:
+        msg: "Failed to pull image {{ image_builder_container }}. Ensure podman can reach the registry."

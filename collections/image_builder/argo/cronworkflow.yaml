@@ -1,0 +1,60 @@
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: nightly-image-rebuild
+  namespace: image-builder
+  labels:
+    app.kubernetes.io/part-of: omnia-image-builder
+spec:
+  schedule: "0 2 * * *"
+  timezone: "America/Chicago"
+  concurrencyPolicy: Replace
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  workflowSpec:
+    serviceAccountName: image-builder
+    entrypoint: build
+    volumes:
+      - name: config
+        configMap:
+          name: image-build-config
+      - name: output
+        persistentVolumeClaim:
+          claimName: image-output
+      - name: workspace
+        persistentVolumeClaim:
+          claimName: image-builder-workspace
+      - name: dev-fuse
+        hostPath:
+          path: /dev/fuse
+          type: CharDevice
+    templates:
+      - name: build
+        container:
+          image: ghcr.io/dell/omnia-image-builder:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/bash", "-c"]
+          args:
+            - |
+              ansible-playbook omnia.image_builder.build_x86_64 \
+                -e @/config/image-vars.yml \
+                -v
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: output
+              mountPath: /output
+            - name: workspace
+              mountPath: /workspace
+            - name: dev-fuse
+              mountPath: /dev/fuse
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+            limits:
+              cpu: "8"
+              memory: "16Gi"
+          securityContext:
+            privileged: true

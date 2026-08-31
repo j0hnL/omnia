@@ -1,0 +1,30 @@
+# Example: Build Ubuntu 24.04 (Noble) x86_64 images
+#
+# Usage:
+#   ansible-playbook omnia.image_builder.build_x86_64 -e @examples/ubuntu_x86_64.yml
+#
+# Ubuntu/Debian builds use debootstrap + apt instead of dnf.
+# os_version is the release number; the codename is auto-derived
+# (24.04 -> noble). Override with os_version_codename if needed.
+---
+
+os_family: "ubuntu"
+os_version: "24.04"
+target_arch: "x86_64"
+
+repos:
+  - name: "ubuntu-main"
+    base_url: "http://archive.ubuntu.com/ubuntu"
+    components: "main universe"
+    gpg: ""
+
+base_image_packages:
+  - openssh-server
+  - chrony
+  - sudo
+  - iproute2
+  - iputils-ping
+  - vim
+  - curl
+
+work_dir: /var/lib/image-builder

@@ -1,0 +1,33 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Cross-build aarch64 compute images on x86_64.
+# Each functional group gets its own image layered on top of the base.
+#
+# Same two-phase approach:
+#   Phase 1: native dnf --forcearch into a per-group installroot
+#   Phase 2: buildah layer on base + QEMU post-install commands (echo only, seconds)
+---
+
+- name: Ensure log directory exists
+  ansible.builtin.file:
+    path: "{{ openchami_log_dir }}"
+    state: directory
+    mode: "{{ dir_permissions_755 }}"
+
+- name: Build aarch64 compute images for each functional group
+  ansible.builtin.include_tasks: build_one_compute_image.yml
+  loop: "{{ compute_images_dict | dict2items }}"
+  loop_control:
+    loop_var: fg_item
+    label: "{{ fg_item.key }}"
+
+- name: Verify aarch64 compute osimages in registry
+  ansible.builtin.command:
+    cmd: "regctl repo ls {{ registry_url }}"
+  changed_when: false
+  register: verify_compute_osimages
+
+- name: Display compute images in registry
+  ansible.builtin.debug:
+    msg: "{{ verify_compute_osimages.stdout_lines }}"

@@ -1,0 +1,89 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Download RPMs from upstream repos into the local mirror directory.
+# Runs dnf download inside a podman container — no dnf-utils or
+# createrepo_c needed on the host.
+---
+
+- name: Generate upstream repo config
+  ansible.builtin.template:
+    src: "upstream.repo.j2"
+    dest: "{{ mirror_dir }}/upstream.repo"
+    mode: "0644"
+
+- name: Build dnf download command for container
+  ansible.builtin.set_fact:
+    _dnf_cmd: |
+      set -euo pipefail
+      dnf install -y dnf-utils createrepo_c 2>/dev/null
+
+      {% if target_arch != ansible_architecture | default('x86_64') %}
+      ARCH_FLAG="--forcearch={{ target_arch }}"
+      {% else %}
+      ARCH_FLAG=""
+      {% endif %}
+
+      COMMON_ARGS="$ARCH_FLAG --resolve --alldeps --destdir=/mirror/packages --setopt=reposdir=/mirror --releasever={{ os_version.split('.')[0] }} --disablerepo=* {% for repo in upstream_repos %}--enablerepo=upstream-{{ repo.name }} {% endfor %}"
+
+      echo "=== Syncing repos ==="
+      {% for repo in upstream_repos %}
+      echo "Syncing upstream-{{ repo.name }}..."
+      reposync --repoid=upstream-{{ repo.name }} --setopt=reposdir=/mirror \
+        --download-path=/mirror/packages --norepopath --newest-only \
+        --download-metadata \
+        {% if target_arch != ansible_architecture | default('x86_64') %}--arch={{ target_arch }}{% endif %}
+
+      {% endfor %}
+
+      # Save comps/group metadata before cleaning
+      COMPS_FILE=""
+      for comps in $(find /mirror/packages -name '*comps*.xml' 2>/dev/null); do
+        cp "$comps" /mirror/comps.xml
+        COMPS_FILE="/mirror/comps.xml"
+        echo "Saved comps: $comps -> /mirror/comps.xml"
+        break
+      done
+
+      # Flatten: move all RPMs to top level, remove all subdirs
+      find /mirror/packages -mindepth 2 -name '*.rpm' -exec mv -n {} /mirror/packages/ \;
+      find /mirror/packages -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} \;
+
+      # Rebuild repo metadata from scratch with correct flat paths
+      COMPS_ARGS=""
+      [ -n "$COMPS_FILE" ] && COMPS_ARGS="--groupfile $COMPS_FILE"
+      createrepo_c $COMPS_ARGS /mirror/packages
+
+      echo "=== Mirror complete: $(find /mirror/packages -name '*.rpm' | wc -l) RPMs ==="
+
+- name: Set sync container image based on os_family
+  ansible.builtin.set_fact:
+    _sync_container_image: >-
+      {{ {'rhel': 'docker.io/library/almalinux:' + os_version.split('.')[0],
+          'almalinux': 'docker.io/library/almalinux:' + os_version.split('.')[0],
+          'rocky': 'docker.io/library/almalinux:' + os_version.split('.')[0],
+          'fedora': 'docker.io/library/fedora:' + os_version.split('.')[0]
+         }[os_family | default('rhel')] }}
+
+- name: "Sync packages for {{ target_arch }} in container"
+  ansible.builtin.shell:
+    cmd: |
+      podman run --rm --replace --network host \
+        -v {{ mirror_dir }}:/mirror:z \
+        --name {{ repo_container_name }}-sync \
+        {{ _sync_container_image }} \
+        /bin/bash -c {{ _dnf_cmd | quote }}
+    executable: /bin/bash
+  register: sync_result
+  changed_when: true
+
+- name: Count downloaded RPMs
+  ansible.builtin.find:
+    paths: "{{ mirror_dir }}/packages"
+    patterns: "*.rpm"
+    recurse: false
+  register: downloaded_rpms
+
+- name: Display download summary
+  ansible.builtin.debug:
+    msg: "Synced {{ downloaded_rpms.matched }} RPMs to {{ mirror_dir }}/packages/"

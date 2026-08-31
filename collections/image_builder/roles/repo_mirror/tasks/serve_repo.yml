@@ -1,0 +1,62 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Serve the local mirror via an nginx podman container.
+# The container auto-restarts and persists across reboots.
+---
+
+- name: Check if repo server container is already running
+  ansible.builtin.command: >
+    podman ps --filter name={{ repo_container_name }} --format {% raw %}"{{.Names}}"{% endraw %}
+  register: repo_running
+  changed_when: false
+  failed_when: false
+
+- name: Start repo server container
+  when: repo_container_name not in (repo_running.stdout | default(''))
+  block:
+    - name: Remove stale repo server container
+      ansible.builtin.command: "podman rm -f {{ repo_container_name }}"
+      changed_when: true
+      failed_when: false
+
+    - name: Enable nginx directory listing for repo browsing
+      ansible.builtin.copy:
+        content: |
+          server {
+              listen 80;
+              location / {
+                  root /usr/share/nginx/html;
+                  autoindex on;
+              }
+          }
+        dest: "{{ mirror_dir }}/nginx.conf"
+        mode: "0644"
+
+    - name: Start nginx container
+      ansible.builtin.command: >
+        podman run -d
+        --name {{ repo_container_name }}
+        --restart always
+        -p {{ serve_port }}:80
+        -v {{ mirror_dir }}:/usr/share/nginx/html:ro,z
+        -v {{ mirror_dir }}/nginx.conf:/etc/nginx/conf.d/default.conf:ro,z
+        {{ repo_container_image }}
+      changed_when: true
+
+    - name: Wait for nginx to be ready
+      ansible.builtin.uri:
+        url: "http://localhost:{{ serve_port }}/packages/"
+        method: GET
+        status_code: [200]
+      register: nginx_health
+      retries: 15
+      delay: 2
+      until: nginx_health.status == 200
+
+- name: Display repo server status
+  ansible.builtin.debug:
+    msg:
+      - "Repo server: http://localhost:{{ serve_port }}/packages/"
+      - "Container: {{ repo_container_name }}"
+      - "Status: {{ 'already running' if repo_container_name in (repo_running.stdout | default('')) else 'started' }}"

@@ -1,0 +1,70 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+- name: Create build directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "{{ dir_permissions_755 }}"
+  loop:
+    - "{{ build_config_dir }}"
+    - "{{ build_log_dir }}"
+    - "{{ work_dir }}/installroot"
+
+- name: Install CA certificate (optional)
+  when: ca_cert_path | default('') | length > 0
+  block:
+    - name: Copy CA certificate to anchors
+      ansible.builtin.copy:
+        src: "{{ ca_cert_path }}"
+        dest: "{{ anchors_path }}"
+        mode: "{{ dir_permissions_644 }}"
+      become: true
+
+    - name: Update CA trust
+      ansible.builtin.command: update-ca-trust
+      changed_when: false
+
+- name: Set package manager family from os_family
+  ansible.builtin.set_fact:
+    _pkg_family: >-
+      {{ 'deb' if os_family | default('rhel') in ['ubuntu', 'debian'] else 'rpm' }}
+
+- name: Set dnf container image (rpm-based OS)
+  ansible.builtin.set_fact:
+    _dnf_container_image: >-
+      {{ {'rhel': 'docker.io/library/almalinux:' + os_version.split('.')[0],
+          'almalinux': 'docker.io/library/almalinux:' + os_version.split('.')[0],
+          'rocky': 'docker.io/library/almalinux:' + os_version.split('.')[0],
+          'fedora': 'docker.io/library/fedora:' + os_version.split('.')[0]
+         }[os_family | default('rhel')] }}
+  when: _pkg_family == 'rpm'
+
+- name: Set apt container image (deb-based OS)
+  ansible.builtin.set_fact:
+    _apt_container_image: >-
+      {{ {'ubuntu': 'docker.io/library/ubuntu:' + os_version,
+          'debian': 'docker.io/library/debian:' + os_version
+         }[os_family] }}
+  when: _pkg_family == 'deb'
+
+- name: Display build configuration
+  ansible.builtin.debug:
+    msg:
+      - "OS: {{ os_family }} {{ os_version }} ({{ target_arch }})"
+      - "Package family: {{ _pkg_family }}"
+      - "Container: {{ _dnf_container_image | default(_apt_container_image) }}"
+      - "Work dir: {{ work_dir }}"
+
+- name: Set image naming facts
+  ansible.builtin.set_fact:
+    image_suffix: "{{ image_name_suffix | default('') }}"
+    k8s_suffix: "_k8s_{{ service_k8s_version | default('') }}"
+
+- name: Set S3 credentials
+  ansible.builtin.set_fact:
+    s3_access: "{{ s3_access_id | default('', true) }}"
+    s3_secret: "{{ s3_secret_key | default('') }}"
+  no_log: true
+  when: publish_s3 | default(false) | bool

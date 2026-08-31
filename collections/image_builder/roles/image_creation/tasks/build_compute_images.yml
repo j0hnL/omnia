@@ -1,0 +1,13 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Build compute images — one per functional group, layered on the base image.
+# Uses containerized dnf + host buildah (same approach as base image).
+---
+
+- name: Build compute images for each functional group
+  ansible.builtin.include_tasks: build_one_compute.yml
+  loop: "{{ compute_images_dict | dict2items }}"
+  loop_control:
+    loop_var: fg_item
+    label: "{{ fg_item.key }}"

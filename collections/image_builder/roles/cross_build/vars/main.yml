@@ -1,0 +1,49 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+dir_permissions_644: "0644"
+dir_permissions_755: "0755"
+
+# Derived paths (from generic work_dir)
+build_config_dir: "{{ work_dir }}/images"
+build_log_dir: "{{ work_dir }}/logs"
+anchors_path: "/etc/pki/ca-trust/source/anchors/image_builder_ca.crt"
+
+# Image names (derived from os_family)
+base_image_name: "{{ os_family | default('rhel') }}-{{ target_arch }}_base"
+
+# Default package groups per OS family (same as image_creation)
+_default_package_groups: >-
+  {{ {'rhel': ['Minimal Install', 'Development Tools'],
+      'almalinux': ['Minimal Install', 'Development Tools'],
+      'rocky': ['Minimal Install', 'Development Tools'],
+      'fedora': ['c-development', 'development-tools']
+     }[os_family | default('rhel')] }}
+
+# Base image dracut commands — these are the ONLY commands that run under QEMU
+# Note: --kver resolved INSIDE the container, not on the host
+base_image_commands:
+  - "KVER=$(ls /lib/modules/ | head -1); echo \"Kernel: $KVER\"; dracut --add 'dmsquash-live livenet network-manager' --install '/usr/lib/systemd/systemd-sysroot-fstab-check' --kver $KVER -N -f --logfile /tmp/dracut.log 2>/dev/null"
+  - "echo DRACUT LOG:; cat /tmp/dracut.log"
+
+# Per-functional-group compute commands (run under QEMU, but very short)
+os_aarch64_compute_commands:
+  - "echo 'Minimal OS aarch64 compute'"
+login_node_aarch64_compute_commands:
+  - "echo 'Login node aarch64 compute'"
+login_compiler_node_aarch64_compute_commands:
+  - "echo 'Login Compiler node aarch64 compute'"
+slurm_node_aarch64_compute_commands:
+  - "echo 'Slurm node aarch64 compute'"
+
+# Error messages
+base_image_failure_msg: |
+  Cross-build of aarch64 base image failed.
+  Check logs at {{ openchami_log_dir }}/cross_build_aarch64_base.log
+compute_image_failure_msg: |
+  Cross-build of aarch64 compute image failed.
+  Check logs at {{ openchami_log_dir }} for details.
+qemu_setup_failure_msg: |
+  Failed to register QEMU binfmt_misc handlers for aarch64.
+  Ensure the host kernel supports binfmt_misc and podman is available.

@@ -1,0 +1,40 @@
+---
+# Pre-commit hooks for omnia.image_builder
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: '\.j2$'
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [-c, .yamllint]
+        files: ^(roles|playbooks|examples|argo)/.*\.(yml|yaml)$
+
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v25.1.2
+    hooks:
+      - id: ansible-lint
+        files: ^(roles|playbooks)/.*\.(yml|yaml)$
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest collection tests
+        entry: python3 -m pytest tests/ -q
+        language: system
+        pass_filenames: false
+        files: ^(roles|plugins|examples|playbooks|tests)/.*

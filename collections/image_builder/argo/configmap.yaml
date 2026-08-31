@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: image-build-config
+  namespace: image-builder
+  labels:
+    app.kubernetes.io/part-of: omnia-image-builder
+data:
+  image-vars.yml: |
+    os_family: rocky
+    os_version: "10.0"
+
+    repos:
+      - name: baseos
+        base_url: https://dl.rockylinux.org/pub/rocky/10/BaseOS/x86_64/os
+        gpg: ""
+      - name: appstream
+        base_url: https://dl.rockylinux.org/pub/rocky/10/AppStream/x86_64/os
+        gpg: ""
+
+    base_image_packages:
+      - kernel
+      - dracut
+      - dracut-live
+      - dracut-network
+      - NetworkManager
+      - openssh-server
+      - openssh-clients
+      - chrony
+      - sudo
+      - iproute
+      - iputils
+
+    work_dir: /workspace
+    output_dir: /output

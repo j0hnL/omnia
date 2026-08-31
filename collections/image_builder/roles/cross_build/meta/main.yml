@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  role_name: cross_build
+  author: Dell Omnia Team
+  description: >
+    Cross-build aarch64 OS images on an x86_64 host using native dnf
+    --forcearch for package installation and minimal QEMU emulation
+    only for dracut/post-install steps. No remote ARM node required.
+  license: Apache-2.0
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+        - "10"
+  galaxy_tags:
+    - hpc
+    - image
+    - aarch64
+    - cross-build
+    - openchami
+dependencies: []

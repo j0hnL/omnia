@@ -1,0 +1,79 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+# ── Registry ────────────────────────────────────────────────────────────
+# OCI registry to publish images to (e.g. "registry.example.com:5000")
+# Leave empty to skip registry publishing.
+registry_url: ""
+# Registry namespace / project (e.g. "myproject")
+registry_ns: "images"
+# TLS verification for registry push/pull (disable only for self-signed certs)
+registry_tls_verify: true
+
+# ── OS family ───────────────────────────────────────────────────────────
+# Supported: rhel, almalinux, rocky, fedora
+os_family: "rhel"
+os_version: "10.0"
+
+# ── Architecture ────────────────────────────────────────────────────────
+target_arch: "x86_64"
+
+# ── Work directory ──────────────────────────────────────────────────────
+# Local directory for build configs, logs, and temp files.
+# No Omnia installation required — any writable directory works.
+work_dir: "/var/lib/image-builder"
+
+# Output directory for exported images (squashfs, kernel, initramfs)
+output_dir: "{{ work_dir }}/output"
+
+# ── Input config ────────────────────────────────────────────────────────
+# Only needed if using Omnia integration (omnia_integration: true)
+input_project_dir: ""
+
+# ── Image builder container ────────────────────────────────────────────
+# The OpenCHAMI image-build container. Pulled from any registry.
+image_builder_container: "ghcr.io/openchami/image-build:latest"
+local_image_tag: "{{ target_arch }}-image-builder/ochami"
+pull_image_retries: "3"
+pull_image_delay: "10"
+
+# ── S3 publishing (optional) ───────────────────────────────────────────
+# Set publish_s3: true to upload squashfs images to S3 for PXE boot.
+# Pass credentials via -e, vault, or env vars — never commit secrets.
+publish_s3: false
+s3_endpoint: ""
+s3_access_id: ""
+s3_secret_key: ""
+s3_bucket: "boot-images"
+
+# ── CA certificate (optional) ──────────────────────────────────────────
+# Path to a CA certificate to trust (e.g. for self-signed repo certs).
+# Leave empty to skip certificate installation.
+ca_cert_path: ""
+
+# ── Build retries ──────────────────────────────────────────────────────
+job_retry: "120"
+job_delay: "30"
+
+# ── GPG verification ──────────────────────────────────────────────────
+# When true, dnf respects gpgcheck settings from the repo config.
+# When false, passes --nogpgcheck to dnf (NOT recommended for production).
+gpg_check: true
+
+# ── Package groups ─────────────────────────────────────────────────────
+# Override the default package groups for the base image.
+# Defaults are set per os_family in vars/main.yml:
+#   RHEL/Rocky/AlmaLinux: ["Minimal Install", "Development Tools"]
+#   Fedora: ["C Development Tools and Libraries", "Development Tools"]
+# Set to [] to skip group install entirely.
+# package_groups: ["Minimal Install", "Development Tools"]
+
+# ── Image naming ───────────────────────────────────────────────────────
+# Suffix appended to image names (e.g. "_omnia_2.1.0" or "_mysite")
+image_name_suffix: ""
+
+# ── Build stream (CI) ──────────────────────────────────────────────────
+enable_build_stream: false
+build_stream_job_id: ""
+image_key: ""

@@ -1,0 +1,97 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Build a single compute image. Called in a loop from build_compute_images.yml.
+---
+
+- name: "Set vars for {{ fg_item.key }}"
+  ansible.builtin.set_fact:
+    _fg_name: "{{ fg_item.key }}"
+    _fg_packages: "{{ fg_item.value.packages }}"
+    _fg_functional_group: "{{ fg_item.value.functional_group }}"
+    _compute_image_name: "{{ os_family }}-{{ fg_item.key }}{{ image_suffix | default('') }}"
+    _compute_installroot: "{{ work_dir }}/installroot/{{ fg_item.key }}"
+
+- name: "Clean installroot for {{ _fg_name }}"
+  ansible.builtin.file:
+    path: "{{ _compute_installroot }}"
+    state: "{{ item }}"
+    mode: "{{ dir_permissions_755 }}"
+  loop: [absent, directory]
+
+# ── Phase 1: containerized dnf ─────────────────────────────────────────
+
+- name: "Install compute packages for {{ _fg_name }} (containerized dnf)"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      podman run --rm --network host \
+        -v {{ work_dir }}:/build:z \
+        -v {{ build_log_dir }}:/logs:z \
+        {{ _dnf_container_image }} \
+        /bin/bash -c '
+          rm -f /etc/yum.repos.d/*.repo 2>/dev/null; cp /build/build-repos.repo /etc/yum.repos.d/build-repos.repo
+          dnf clean all 2>/dev/null || true
+          HOST_CFG=""; dnf --help 2>&1 | grep -q "use-host-config" && HOST_CFG="--use-host-config"
+          dnf install -y \
+            --installroot=/build/installroot/{{ _fg_name }} $HOST_CFG \
+            --setopt=cachedir=/build/dnf-cache \
+            --setopt=install_weak_deps=False {{ '' if gpg_check | default(true) | bool else '--nogpgcheck' }} \
+            --setopt=tsflags=nodocs \
+            --releasever={{ os_version.split(".")[0] }} \
+            {{ _fg_packages | join(" ") }} \
+            2>&1 | tee -a /logs/{{ _fg_name }}_compute.log
+        '
+    executable: /bin/bash
+  changed_when: true
+  when: _fg_packages | length > 0
+
+# ── Phase 2: buildah layer on base ────────────────────────────────────
+
+- name: "Build {{ _fg_name }} compute image via buildah"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+
+      # Start from the base image
+      CTR=$(buildah from "localhost/{{ registry_ns }}/{{ base_image_name }}:{{ os_version }}")
+      echo "Container: $CTR (from base {{ base_image_name }}:{{ os_version }})"
+
+      {% if _fg_packages | length > 0 %}
+      # Layer compute packages (tar preserves symlinks)
+      tar -C {{ _compute_installroot }} -cf /tmp/_compute_layer.tar .
+      buildah add "$CTR" /tmp/_compute_layer.tar /
+      rm -f /tmp/_compute_layer.tar
+      {% endif %}
+
+      # Run per-group post-install commands
+      {% set command_var = _fg_functional_group + '_compute_commands' %}
+      {% set commands_list = lookup('vars', command_var, default=[]) %}
+      {% if commands_list | length > 0 %}
+      {% for cmd in commands_list %}
+      buildah run "$CTR" -- /usr/bin/bash -c '{{ cmd }}'
+      {% endfor %}
+      {% endif %}
+
+      # Commit
+      LOCAL_IMG="localhost/{{ registry_ns }}/{{ _compute_image_name }}:{{ os_version }}"
+      buildah commit "$CTR" "$LOCAL_IMG"
+
+      {% if registry_url | default('') | length > 0 %}
+      REMOTE_IMG="{{ registry_url }}/{{ registry_ns }}/{{ _compute_image_name }}:{{ os_version }}"
+      buildah tag "$LOCAL_IMG" "$REMOTE_IMG"
+      buildah push {{ '--tls-verify=false' if not (registry_tls_verify | default(false) | bool) else '' }} \
+        "$REMOTE_IMG" "docker://$REMOTE_IMG"
+      {% endif %}
+
+      buildah rm "$CTR" || true
+      echo "=== Compute image: {{ _compute_image_name }}:{{ os_version }} ==="
+    executable: /bin/bash
+  changed_when: true
+
+- name: "Export {{ _fg_name }}"
+  ansible.builtin.include_tasks: "{{ role_path }}/../local_storage/tasks/export_image.yml"
+  vars:
+    _export_image_name: "localhost/{{ registry_ns }}/{{ _compute_image_name }}:{{ os_version }}"
+    _export_group_name: "{{ _fg_name }}"
+    _export_label: "{{ _fg_name }} compute image"

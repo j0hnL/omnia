@@ -1,0 +1,47 @@
+options:
+  layer_type: base
+  name: '{{ _compute_image_name }}'
+  publish_tags: '{{ os_version }}'
+  pkg_manager: dnf
+{% if registry_url | default('') | length > 0 %}
+  parent: '{{ registry_url }}/{{ registry_ns }}/{{ _base_image_name }}:{{ os_version }}'
+  registry_opts_pull:
+    - '--tls-verify={{ registry_tls_verify | default(false) | lower }}'
+  publish_registry: '{{ registry_url }}/{{ registry_ns }}'
+  registry_opts_push:
+    - '--tls-verify={{ registry_tls_verify | default(false) | lower }}'
+{% else %}
+  parent: 'localhost/{{ registry_ns }}/{{ _base_image_name }}:{{ os_version }}'
+{% endif %}
+{% if publish_s3 | default(false) | bool %}
+  publish_s3: '{{ s3_endpoint }}'
+  s3_prefix: '{{ group_name }}/{{ _compute_image_name }}/'
+  s3_bucket: '{{ s3_bucket | default("boot-images") }}'
+{% endif %}
+
+repos:
+{% for repo in _repos %}
+{% if repo.base_url | default('') | length > 1 %}
+  - alias: '{{ repo.name }}'
+    url: '{{ repo.base_url }}'
+{% if repo.gpg | default('') | length > 1 %}
+    gpg: '{{ repo.gpg }}'
+{% endif %}
+{% endif %}
+{% endfor %}
+
+packages:
+{% for pkg in compute_packages %}
+  - {{ pkg }}
+{% endfor %}
+
+{% set command_var = functional_group + '_compute_commands' %}
+{% set commands_list = lookup('vars', command_var, default=[]) %}
+cmds:
+{% if commands_list | length > 0 %}
+{% for cmd in commands_list %}
+  - cmd: "{{ cmd }}"
+{% endfor %}
+{% else %}
+  []
+{% endif %}

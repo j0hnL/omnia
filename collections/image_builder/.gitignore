@@ -1,0 +1,30 @@
+# Build artifacts
+*.tar.gz
+*.tar
+*.pyc
+__pycache__/
+tests/output/
+
+# Secrets — never commit credentials
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+.env
+.env.*
+secrets.yml
+vault.yml
+*_credentials.yml
+
+# Build workspace artifacts (runtime, never committed)
+/installroot/
+/minio-data/
+/dnf-cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

@@ -1,0 +1,39 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+# ── Work directory ──────────────────────────────────────────────────────
+work_dir: "/var/lib/image-builder"
+
+# ── Local export (always enabled) ──────────────────────────────────────
+# Built images are always exported as squashfs to this directory.
+# Each image gets: <output_dir>/<image_name>/rootfs
+output_dir: "{{ work_dir }}/output"
+
+# Squashfs compression (zstd is fastest with good ratio)
+squashfs_compression: "zstd"
+squashfs_comp_level: 3
+
+# ── S3 publishing ──────────────────────────────────────────────────────
+# Set publish_s3: true to enable S3 uploads.
+# If s3_endpoint is empty, a local MinIO container is auto-deployed.
+# WARNING: Always set strong s3_access_id/s3_secret_key values.
+# Pass via -e, vault, or env vars — never commit credentials.
+publish_s3: false
+s3_endpoint: ""
+s3_access_id: ""
+s3_secret_key: ""
+s3_bucket: "boot-images"
+
+# ── Local MinIO (auto-deployed when publish_s3=true, s3_endpoint="") ──
+minio_container_name: "image-builder-minio"
+minio_image: "docker.io/minio/minio:latest"
+minio_data_dir: "{{ work_dir }}/minio-data"
+minio_port: 9000
+minio_console_port: 9001
+# MinIO root credentials (used when auto-deploying)
+# WARNING: Change these defaults — do not use in production.
+# Pass via -e or ansible-vault. The role will generate random
+# credentials if these are left empty.
+minio_root_user: ""
+minio_root_password: ""

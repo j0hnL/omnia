@@ -1,0 +1,85 @@
+# Example: Build x86_64 images standalone (no Omnia installation required)
+#
+# Usage:
+#   ansible-playbook omnia.image_builder.build_x86_64 -e @examples/standalone_x86_64.yml
+---
+
+os_family: "rhel"
+os_version: "10.0"
+target_arch: "x86_64"
+
+# ── RHEL repos: choose one option ───────────────────────────────────────
+#
+# Option 1: Direct repo URLs (Satellite, Pulp, or any mirror)
+# repos:
+#   - name: "baseos"
+#     base_url: "https://satellite.example.com/pulp/content/Default_Organization/Library/rhel-10-baseos/os"
+#     gpg: ""
+#   - name: "appstream"
+#     base_url: "https://satellite.example.com/pulp/content/Default_Organization/Library/rhel-10-appstream/os"
+#     gpg: ""
+#
+# Option 2: Satellite URL (auto-generates repo paths)
+# rhel_satellite_url: "https://satellite.example.com"
+#
+# Option 3: System is registered with subscription-manager
+#   (entitlement certs auto-detected in /etc/pki/entitlement/)
+#   Just leave repos empty — it works automatically.
+#
+# Option 4 (default fallback): AlmaLinux repos (binary compatible with RHEL)
+#   If no repos, no Satellite, and no entitlement certs are found,
+#   the collection automatically falls back to AlmaLinux public repos.
+rhel_fallback_to_alma: true
+
+# Packages for the base image (every image gets these)
+base_image_packages:
+  - kernel
+  - dracut
+  - dracut-live
+  - dracut-network
+  - NetworkManager
+  - openssh-server
+  - openssh-clients
+  - chrony
+  - sudo
+  - iproute
+  - iputils
+  - vim-minimal
+  - less
+  - tar
+  - gzip
+
+# Compute images — one per functional group (optional)
+# Each group gets the base packages PLUS its own packages.
+compute_images_dict:
+  slurm_node_x86_64:
+    functional_group: "slurm_node_x86_64"
+    packages:
+      - slurm
+      - slurm-slurmd
+      - munge
+      - hwloc
+
+# Where to build (any writable directory)
+work_dir: "/var/lib/image-builder"
+
+# Registry (optional — set to push OCI images)
+# registry_url: "registry.example.com:5000"
+# registry_ns: "myproject"
+
+# S3 publishing (optional — for PXE boot)
+# Option A: Auto-deploy a local MinIO container (zero config)
+#   publish_s3: true
+#   (leave s3_endpoint empty — MinIO starts automatically)
+#
+# Option B: Use your own S3-compatible endpoint
+#   publish_s3: true
+#   s3_endpoint: "http://minio.example.com:9000"
+#   s3_access_id: "YOUR_ACCESS_KEY"        # pass via -e or vault
+#   s3_secret_key: "YOUR_SECRET_KEY"       # pass via -e or vault
+#
+# Images are ALWAYS exported locally to <work_dir>/output/ regardless
+# of S3 settings. Each image gets: rootfs (squashfs), vmlinuz, initramfs.img
+
+# CA cert for self-signed repos (optional)
+# ca_cert_path: "/path/to/ca.crt"

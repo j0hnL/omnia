@@ -1,0 +1,28 @@
+FROM docker.io/library/almalinux:10
+
+RUN dnf install -y \
+        python3-pip \
+        buildah \
+        podman \
+        fuse-overlayfs \
+        squashfs-tools \
+        skopeo \
+    && pip install ansible-core \
+    && ln -sf /usr/local/bin/ansible-playbook /usr/bin/ansible-playbook \
+    && ln -sf /usr/local/bin/ansible-galaxy /usr/bin/ansible-galaxy \
+    && ln -sf /usr/local/bin/ansible /usr/bin/ansible \
+    && dnf clean all
+
+COPY . /tmp/collection-src
+
+RUN cd /tmp/collection-src \
+    && ansible-galaxy collection build --force \
+    && ansible-galaxy collection install omnia-image_builder-*.tar.gz --force \
+    && ansible-galaxy collection install containers.podman --force \
+    && rm -rf /tmp/collection-src
+
+RUN echo '[storage]' > /etc/containers/storage.conf \
+    && echo 'driver = "vfs"' >> /etc/containers/storage.conf \
+    && mkdir -p /workspace /output
+
+ENTRYPOINT ["/usr/bin/ansible-playbook"]

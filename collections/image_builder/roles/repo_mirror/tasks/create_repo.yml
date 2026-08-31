@@ -1,0 +1,33 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Ensure repo metadata exists. When sync_packages ran, it already created
+# metadata. This task handles the cached case where sync was skipped.
+---
+
+- name: Check if repodata already exists
+  ansible.builtin.stat:
+    path: "{{ mirror_dir }}/packages/repodata/repomd.xml"
+  register: repomd_stat
+
+- name: Create/update repo metadata in container
+  ansible.builtin.shell:
+    cmd: |
+      podman run --rm \
+        -v {{ mirror_dir }}:/mirror:z \
+        {{ _sync_container_image | default('docker.io/library/almalinux:' + os_version.split('.')[0]) }} \
+        /bin/bash -c 'dnf install -y createrepo_c 2>/dev/null && COMPS=""; [ -f /mirror/comps.xml ] && COMPS="--groupfile /mirror/comps.xml"; createrepo_c $COMPS /mirror/packages'
+    executable: /bin/bash
+  changed_when: true
+  when: not repomd_stat.stat.exists | default(false)
+
+- name: Count RPMs in local mirror
+  ansible.builtin.find:
+    paths: "{{ mirror_dir }}/packages"
+    patterns: "*.rpm"
+    recurse: false
+  register: final_rpm_count
+
+- name: Display repo status
+  ansible.builtin.debug:
+    msg: "Local repo: {{ final_rpm_count.matched }} RPMs at {{ mirror_dir }}/packages/"

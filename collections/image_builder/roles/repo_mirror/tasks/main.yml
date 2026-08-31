@@ -1,0 +1,73 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Create a local RPM repository mirror for offline image building.
+# Everything runs in podman containers — the host only needs podman.
+#
+# Workflow:
+#   1. First run (online):  Podman container syncs packages → createrepo → nginx serves
+#   2. Subsequent runs:     Skips download (cached) → container serves existing repo
+#   3. Offline/air-gapped:  Uses cached repo — no external access needed
+#
+# After this role runs, the 'repos' fact is set to point at the local
+# mirror, so downstream roles automatically use the local repo.
+---
+
+- name: Create mirror directory
+  ansible.builtin.file:
+    path: "{{ mirror_dir }}/packages"
+    state: directory
+    mode: "0755"
+    recurse: true
+
+- name: Check if mirror already has packages
+  ansible.builtin.find:
+    paths: "{{ mirror_dir }}/packages"
+    patterns: "*.rpm"
+    recurse: false
+  register: existing_rpms
+
+- name: Set cache status
+  ansible.builtin.set_fact:
+    _mirror_has_packages: "{{ existing_rpms.matched > 0 }}"
+
+- name: Validate upstream repos for initial sync
+  ansible.builtin.fail:
+    msg: |
+      upstream_repos must be provided for the initial mirror sync.
+      Example: -e '{"upstream_repos": [{"name": "baseos", "base_url": "http://mirror/BaseOS/x86_64/os", "gpg": ""}]}'
+  when:
+    - upstream_repos | default([]) | length == 0
+    - not (_mirror_has_packages and skip_if_cached | bool)
+
+- name: Display mirror status
+  ansible.builtin.debug:
+    msg: "{{ 'Using cached mirror (' + (existing_rpms.matched | string) + ' RPMs)' if _mirror_has_packages and (skip_if_cached | bool) else 'Downloading packages from upstream repos...' }}"
+
+- name: Sync packages in container
+  ansible.builtin.include_tasks: sync_packages.yml
+  when: not (_mirror_has_packages and skip_if_cached | bool)
+
+- name: Create repo metadata in container
+  ansible.builtin.include_tasks: create_repo.yml
+
+- name: Start repo server container
+  ansible.builtin.include_tasks: serve_repo.yml
+
+- name: Set repos fact to local mirror
+  ansible.builtin.set_fact:
+    repos:
+      - name: "local-mirror"
+        base_url: "http://localhost:{{ serve_port }}/packages"
+        gpg: ""
+    cacheable: true
+
+- name: Display local mirror info
+  ansible.builtin.debug:
+    msg:
+      - "Local RPM mirror ready (containerized)"
+      - "Container: {{ repo_container_name }}"
+      - "RPMs: {{ existing_rpms.matched if _mirror_has_packages and (skip_if_cached | bool) else 'newly synced' }}"
+      - "Repo URL: http://localhost:{{ serve_port }}/packages"
+      - "Mirror dir: {{ mirror_dir }}/packages"
+      - "Offline-capable: yes"

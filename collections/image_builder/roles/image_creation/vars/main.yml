@@ -1,0 +1,100 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+dir_permissions_644: "0644"
+dir_permissions_755: "0755"
+
+# Derived paths (from generic work_dir, no Omnia dependency)
+build_config_dir: "{{ work_dir }}/images"
+build_log_dir: "{{ work_dir }}/logs"
+anchors_path: "/etc/pki/ca-trust/source/anchors/image_builder_ca.crt"
+
+# Base image names (derived from os_family)
+base_image_name: "{{ os_family | default('rhel') }}-{{ target_arch }}_base"
+
+# Default package groups per OS family
+# RHEL/Rocky/AlmaLinux: group display names work with dnf4
+# Fedora: dnf5 requires group IDs (lowercase with hyphens)
+_default_package_groups: >-
+  {{ {'rhel': ['Minimal Install', 'Development Tools'],
+      'almalinux': ['Minimal Install', 'Development Tools'],
+      'rocky': ['Minimal Install', 'Development Tools'],
+      'fedora': ['c-development', 'development-tools']
+     }[os_family | default('rhel')] | default([]) }}
+
+# ── Debian/Ubuntu specifics ────────────────────────────────────────────
+# Default codename derived from os_version when os_version_codename not set.
+# Override with -e os_version_codename=<codename> for exact control.
+_deb_codename: >-
+  {{ {'24.04': 'noble', '22.04': 'jammy', '20.04': 'focal',
+      '12': 'bookworm', '11': 'bullseye'
+     }[os_version | default('24.04')] | default('noble') }}
+
+# Debian architecture name (differs from RPM arch naming)
+_deb_arch: "{{ 'arm64' if target_arch == 'aarch64' else 'amd64' }}"
+
+# Default mirror when no repos provided
+_deb_default_mirror: >-
+  {{ 'http://archive.ubuntu.com/ubuntu' if os_family == 'ubuntu'
+     else 'http://deb.debian.org/debian' }}
+
+# Kernel package name
+_deb_kernel_pkg: >-
+  {{ 'linux-image-generic' if os_family == 'ubuntu' else 'linux-image-' + _deb_arch }}
+
+# Base image dracut commands
+# Note: --kver is resolved INSIDE the container (ls /lib/modules/) not on the host
+base_image_commands:
+  - 'KVER=$(ls /lib/modules/ | head -1) && echo Kernel: $KVER && dracut --add dmsquash-live --add livenet --add network-manager --install /usr/lib/systemd/systemd-sysroot-fstab-check --kver $KVER -N -f --logfile /tmp/dracut.log 2>/dev/null || true'
+  - 'cat /tmp/dracut.log 2>/dev/null || echo No dracut log found'
+
+# Per-functional-group compute commands
+os_x86_64_compute_commands:
+  - "echo 'Minimal OS x86_64 compute'"
+os_aarch64_compute_commands:
+  - "echo 'Minimal OS aarch64 compute'"
+login_node_x86_64_compute_commands:
+  - "echo 'Login node x86_64 compute'"
+login_node_aarch64_compute_commands:
+  - "echo 'Login node aarch64 compute'"
+login_compiler_node_x86_64_compute_commands:
+  - "echo 'Login Compiler node x86_64 compute'"
+login_compiler_node_aarch64_compute_commands:
+  - "echo 'Login Compiler node aarch64 compute'"
+service_kube_node_x86_64_compute_commands:
+  - "echo 'Service kube node x86_64 compute'"
+service_kube_control_plane_first_x86_64_compute_commands:
+  - "echo 'Service kube control plane first x86_64 compute'"
+service_kube_control_plane_x86_64_compute_commands:
+  - "echo 'Service kube control plane x86_64 compute'"
+slurm_control_node_x86_64_compute_commands:
+  - "echo 'Slurm Control node x86_64 compute'"
+slurm_node_x86_64_compute_commands:
+  - "echo 'Slurm node x86_64 compute'"
+slurm_node_aarch64_compute_commands:
+  - "echo 'Slurm node aarch64 compute'"
+
+# Podman run arguments
+ochami_mounts_base:
+  - --user 0 --privileged
+  - -v {{ build_config_dir }}/{{ rhel_x86_64_base_image_name }}-{{ rhel_tag }}.yaml:/home/builder/config.yaml:z
+
+ochami_mounts_ca: >-
+  {{ '-v ' + ca_cert_path + ':/etc/pki/ca-trust/source/anchors/ca.crt:z'
+     if ca_cert_path | default('') | length > 0 else '' }}
+
+ochami_image:
+  - --entrypoint /bin/bash
+  - "localhost/{{ local_image_tag }}"
+
+ochami_base_command: >-
+  -c '{{ "update-ca-trust extract && " if ca_cert_path | default("") | length > 0 else "" }}image-build --config /home/builder/config.yaml --log-level DEBUG'
+
+# Error messages
+base_image_failure_msg: |
+  Base {{ target_arch }} image build job failed or timed out.
+  Check logs at {{ build_log_dir }} for details.
+compute_image_failure_msg: |
+  {{ target_arch }} compute image build job did not complete successfully.
+  Check logs at {{ build_log_dir }} for details.

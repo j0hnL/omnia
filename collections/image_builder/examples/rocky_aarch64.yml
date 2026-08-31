@@ -1,0 +1,33 @@
+# Example: Cross-build Rocky Linux 10 aarch64 on x86_64
+#
+# Usage:
+#   ansible-playbook omnia.open_image_builder.build_aarch64 \
+#     -e @examples/rocky_aarch64.yml
+---
+
+os_family: "rocky"
+os_version: "10.0"
+target_arch: "aarch64"
+
+repos:
+  - name: "rocky-baseos"
+    base_url: "https://dl.rockylinux.org/pub/rocky/10/BaseOS/aarch64/os"
+    gpg: ""
+  - name: "rocky-appstream"
+    base_url: "https://dl.rockylinux.org/pub/rocky/10/AppStream/aarch64/os"
+    gpg: ""
+
+base_image_packages:
+  - kernel
+  - dracut
+  - dracut-live
+  - dracut-network
+  - NetworkManager
+  - openssh-server
+  - openssh-clients
+  - chrony
+  - sudo
+  - iproute
+  - iputils
+
+work_dir: /var/lib/image-builder-arm

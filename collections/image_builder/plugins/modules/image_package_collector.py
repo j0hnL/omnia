@@ -1,0 +1,352 @@
+#!/usr/bin/python
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Ansible module to collect per-functional-group RPM packages for compute image building."""
+
+import os
+import yaml
+from ansible.module_utils.basic import AnsibleModule
+from ansible_collections.omnia.image_builder.plugins.module_utils.build_image.config import ROLE_SPECIFIC_KEYS
+from ansible_collections.omnia.image_builder.plugins.module_utils.build_image.common_functions import (
+    load_json_file,
+    load_yaml_file,
+    is_additional_packages_enabled,
+    get_allowed_additional_subgroups,
+    deduplicate_list
+)
+
+
+DOCUMENTATION = r"""
+---
+module: image_package_collector
+short_description: Collect per-functional-group RPM packages for compute images
+description:
+  - Reads software_config.json and per-functional-group JSON package definitions
+    to produce a dictionary mapping each functional group to its RPM package list.
+options:
+  functional_groups:
+    description: List of functional group names (e.g. slurm_node_x86_64)
+    required: true
+    type: raw
+  software_config_file:
+    description: Path to software_config.json
+    required: true
+    type: str
+  input_project_dir:
+    description: Path to the input project directory containing config/
+    required: true
+    type: str
+  additional_json_path:
+    description: Path to additional_packages.json
+    required: false
+    type: str
+    default: ""
+  service_k8s_version:
+    description: Kubernetes version string
+    required: false
+    type: str
+    default: ""
+author:
+  - Dell Omnia Team
+"""
+
+RETURN = r"""
+compute_images_dict:
+  description: Dict mapping functional_group name to packages list
+  type: dict
+  returned: always
+"""
+
+
+def get_additional_packages_for_role(additional_json_path, role_name, module):
+    """Get RPM packages for a specific role from additional_packages.json."""
+    if not additional_json_path or role_name not in ROLE_SPECIFIC_KEYS:
+        return []
+
+    data = load_json_file(additional_json_path, module)
+    if not data or role_name not in data:
+        return []
+
+    role_data = data.get(role_name, {})
+    cluster_items = role_data.get('cluster', [])
+
+    packages = []
+    for item in cluster_items:
+        if item.get('type') == 'rpm' and item.get('package'):
+            packages.append(item['package'])
+
+    return packages
+
+
+def normalize_functional_groups(raw_fgs, module):
+    """Normalize functional_groups input into a list of strings."""
+    if raw_fgs is None:
+        return []
+
+    if isinstance(raw_fgs, str):
+        try:
+            raw_fgs = yaml.safe_load(raw_fgs)
+        except Exception as exc:
+            module.fail_json(msg=f"Unable to parse functional_groups: {exc}")
+
+    if isinstance(raw_fgs, dict):
+        raw_fgs = raw_fgs.get("functional_groups", [])
+
+    if not isinstance(raw_fgs, list):
+        module.fail_json(msg="functional_groups must be a list of strings")
+
+    fgs = []
+    for fg in raw_fgs:
+        if isinstance(fg, str):
+            fgs.append(fg)
+        elif isinstance(fg, dict) and "name" in fg:
+            fgs.append(fg["name"])
+        else:
+            module.fail_json(msg="functional_groups items must be strings or dicts with 'name'")
+    return fgs
+
+
+def collect_packages_from_json(sw_data, fg_name=None,
+                               slurm_defined=False,
+                               service_k8s_defined=False):
+    """Collect RPM package names from a JSON-like dictionary of software data."""
+    packages = []
+
+    if slurm_defined:
+        fg_name = fg_name.replace("_aarch64", "").replace("_x86_64", "")
+
+        if "slurm_custom" in sw_data and "cluster" in sw_data["slurm_custom"]:
+            for entry in sw_data["slurm_custom"]["cluster"]:
+                if entry.get("type") == "rpm" and "package" in entry:
+                    packages.append(entry["package"])
+
+        if fg_name in sw_data and "cluster" in sw_data[fg_name]:
+            for entry in sw_data[fg_name]["cluster"]:
+                if entry.get("type") == "rpm" and "package" in entry:
+                    packages.append(entry["package"])
+
+    elif service_k8s_defined:
+        fg_name = fg_name.replace("_aarch64", "").replace("_x86_64", "")
+
+        k8s_top_key = "service_rke2" if "service_rke2" in sw_data else "service_k8s"
+
+        if k8s_top_key in sw_data and "cluster" in sw_data[k8s_top_key]:
+            for entry in sw_data[k8s_top_key]["cluster"]:
+                if entry.get("type") == "rpm" and "package" in entry:
+                    packages.append(entry["package"])
+
+        if fg_name in sw_data and "cluster" in sw_data[fg_name]:
+            for entry in sw_data[fg_name]["cluster"]:
+                if entry.get("type") == "rpm" and "package" in entry:
+                    packages.append(entry["package"])
+
+    else:
+        for section_data in sw_data.values():
+            if isinstance(section_data, dict) and "cluster" in section_data:
+                for entry in section_data["cluster"]:
+                    if entry.get("type") == "rpm" and "package" in entry:
+                        packages.append(entry["package"])
+
+        if "cluster" in sw_data and isinstance(sw_data["cluster"], list):
+            for entry in sw_data["cluster"]:
+                if entry.get("type") == "rpm" and "package" in entry:
+                    packages.append(entry["package"])
+
+    return packages
+
+
+def process_functional_group(fg_name, arch, os_version, input_project_dir,
+                             software_map, allowed_softwares, module):
+    """Process a single functional group and return its package list."""
+    group_path = os.path.join(
+        input_project_dir, "config", arch, "rhel", os_version
+    )
+
+    if not os.path.isdir(group_path):
+        module.log(f"Directory not found: {group_path}")
+        return []
+
+    json_files = software_map.get(fg_name, [])
+    packages = []
+
+    for json_file in json_files:
+        sw_name = json_file.replace(".json", "")
+        if sw_name.startswith("service_k8s_v"):
+            sw_name = "service_k8s"
+        if sw_name not in allowed_softwares:
+            continue
+
+        sw_path = os.path.join(group_path, json_file)
+        if not os.path.isfile(sw_path):
+            module.log(f"File not found: {sw_path}")
+            continue
+
+        sw_data = load_json_file(sw_path, module)
+        if not sw_data:
+            continue
+
+        if json_file == "slurm_custom.json":
+            packages.extend(
+                collect_packages_from_json(
+                    sw_data, fg_name=fg_name, slurm_defined=True
+                )
+            )
+        elif json_file.startswith("service_k8s_v") or json_file == "service_rke2.json":
+            packages.extend(
+                collect_packages_from_json(
+                    sw_data, fg_name=fg_name, service_k8s_defined=True
+                )
+            )
+        else:
+            packages.extend(collect_packages_from_json(sw_data))
+
+    return deduplicate_list(packages)
+
+
+def run_module():
+    """Entry point for the Ansible module."""
+
+    module_args = dict(
+        functional_groups=dict(type="raw", required=True),
+        software_config_file=dict(type="str", required=True),
+        input_project_dir=dict(type="str", required=True),
+        additional_json_path=dict(type="str", required=False, default=""),
+        service_k8s_version=dict(type="str", required=False, default=""),
+    )
+
+    result = dict(
+        changed=False,
+        compute_images_dict={}
+    )
+
+    module = AnsibleModule(
+        argument_spec=module_args,
+        supports_check_mode=True
+    )
+
+    functional_groups = normalize_functional_groups(
+        module.params["functional_groups"], module
+    )
+    software_config_file = module.params["software_config_file"]
+    input_project_dir = module.params["input_project_dir"]
+    additional_json_path = module.params["additional_json_path"]
+    service_k8s_version = module.params["service_k8s_version"]
+
+    software_config = load_json_file(software_config_file, module)
+    if not software_config:
+        module.fail_json(msg="Failed to load software_config.json")
+
+    os_version = software_config.get("cluster_os_version")
+    if not os_version:
+        module.fail_json(msg="cluster_os_version not found in software_config.json")
+
+    if not service_k8s_version:
+        for sw in software_config.get("softwares", []):
+            if sw.get("name") == "service_k8s" and sw.get("version"):
+                service_k8s_version = sw["version"]
+                break
+
+    allowed_softwares = {
+        sw["name"] for sw in software_config.get("softwares", [])
+    }
+
+    additional_enabled = is_additional_packages_enabled(software_config)
+    allowed_additional_subgroups = get_allowed_additional_subgroups(software_config) if additional_enabled else []
+
+    k8s_functional_groups = {
+        "service_kube_node_x86_64",
+        "service_kube_control_plane_first_x86_64",
+        "service_kube_control_plane_x86_64"
+    }
+
+    needs_service_k8s = any(fg in k8s_functional_groups for fg in functional_groups)
+
+    service_k8s_json = None
+    if needs_service_k8s and "service_rke2" not in allowed_softwares:
+        if not service_k8s_version:
+            module.fail_json(msg="service_k8s version not found in software_config.json")
+        service_k8s_json = f"service_k8s_v{service_k8s_version}.json"
+
+    if "service_rke2" in allowed_softwares:
+        k8s_json = "service_rke2.json"
+    elif service_k8s_json:
+        k8s_json = service_k8s_json
+    else:
+        k8s_json = None
+
+    software_map = {
+        "os_x86_64": ["default_packages.json", "ldms.json"],
+        "os_aarch64": ["default_packages.json", "ldms.json"],
+        "slurm_control_node_x86_64": ["slurm_custom.json", "openldap.json", "ldms.json"],
+        "slurm_node_x86_64": ["slurm_custom.json", "openldap.json", "ldms.json"],
+        "login_node_x86_64": ["slurm_custom.json", "openldap.json", "ldms.json"],
+        "login_compiler_node_x86_64": [
+            "slurm_custom.json", "openldap.json",
+            "ucx.json", "openmpi.json", "ldms.json"
+        ],
+        "slurm_node_aarch64": ["slurm_custom.json", "openldap.json", "ldms.json"],
+        "login_node_aarch64": ["slurm_custom.json", "openldap.json", "ldms.json"],
+        "login_compiler_node_aarch64": [
+            "slurm_custom.json", "openldap.json", "ldms.json"
+        ],
+    }
+
+    if k8s_json:
+        software_map.update({
+            "service_kube_node_x86_64": [k8s_json],
+            "service_kube_control_plane_first_x86_64": [k8s_json],
+            "service_kube_control_plane_x86_64": [k8s_json],
+        })
+
+    compute_images_dict = {}
+
+    for fg_name in functional_groups:
+
+        if fg_name.endswith("_x86_64"):
+            arch = "x86_64"
+        elif fg_name.endswith("_aarch64"):
+            arch = "aarch64"
+        else:
+            arch = "x86_64"
+
+        base_name = fg_name.replace("_x86_64", "").replace("_aarch64", "")
+
+        packages = process_functional_group(
+            fg_name, arch, os_version, input_project_dir,
+            software_map, allowed_softwares, module
+        )
+
+        if additional_enabled and base_name in allowed_additional_subgroups:
+            additional_role_pkgs = get_additional_packages_for_role(
+                additional_json_path, base_name, module
+            )
+            packages.extend(additional_role_pkgs)
+            packages = deduplicate_list(packages)
+
+        compute_images_dict[fg_name] = {
+            "functional_group": fg_name,
+            "packages": packages
+        }
+
+    result["compute_images_dict"] = compute_images_dict
+    module.exit_json(**result)
+
+
+def main():
+    run_module()
+
+
+if __name__ == "__main__":
+    main()

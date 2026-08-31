@@ -1,0 +1,17 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+- name: Set image naming suffixes
+  ansible.builtin.set_fact:
+    image_suffix: "{{ image_name_suffix | default('') }}"
+    k8s_suffix: "_k8s_{{ service_k8s_version | default('') }}"
+    base_image_suffix: ""
+    compute_image_suffix: ""
+
+- name: Set S3 credentials
+  ansible.builtin.set_fact:
+    s3_access: "{{ s3_access_id | default('', true) }}"
+    s3_secret: "{{ s3_secret_key | default('') }}"
+  no_log: true
+  when: publish_s3 | default(false) | bool

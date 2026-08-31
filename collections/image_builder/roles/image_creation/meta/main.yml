@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: image_creation
+  author: Dell Omnia Team
+  description: >
+    Build base and per-functional-group compute OS images using the OpenCHAMI
+    image-build tool. Publishes to OCI registry and S3 (MinIO or PowerScale).
+  license: Apache-2.0
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+        - "10"
+  galaxy_tags:
+    - hpc
+    - image
+    - openchami
+    - podman
+dependencies: []

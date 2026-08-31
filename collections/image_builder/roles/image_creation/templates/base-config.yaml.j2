@@ -1,0 +1,35 @@
+options:
+  layer_type: 'base'
+  name: '{{ _base_image_name }}'
+  publish_tags: '{{ os_version }}'
+  pkg_manager: 'dnf'
+  parent: 'scratch'
+{% if registry_url | default('') | length > 0 %}
+  publish_registry: '{{ registry_url }}/{{ registry_ns }}'
+  registry_opts_push:
+    - '--tls-verify={{ registry_tls_verify | default(false) | lower }}'
+{% endif %}
+
+repos:
+{% for repo in _repos %}
+{% if repo.base_url | default('') | length > 1 %}
+  - alias: '{{ repo.name }}'
+    url: '{{ repo.base_url }}'
+{% if repo.gpg | default('') | length > 1 %}
+    gpg: '{{ repo.gpg }}'
+{% endif %}
+{% endif %}
+{% endfor %}
+
+package_groups:
+  - 'Minimal Install'
+  - 'Development Tools'
+packages:
+{% for pkg in _packages %}
+  - {{ pkg }}
+{% endfor %}
+
+cmds:
+{% for cmd in base_image_commands %}
+  - cmd: "{{ cmd }}"
+{% endfor %}

@@ -1,0 +1,52 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+# ── Upstream repos (synced once, then offline) ─────────────────────────
+# List of upstream RPM repos to mirror. Same format as the collection's
+# standard repos variable.
+# Example:
+#   upstream_repos:
+#     - name: baseos
+#       base_url: "http://mirror.example.com/rhel/10/BaseOS/x86_64/os"
+#       gpg: ""
+#     - name: appstream
+#       base_url: "http://mirror.example.com/rhel/10/AppStream/x86_64/os"
+#       gpg: ""
+upstream_repos: []
+
+# ── Target architecture ────────────────────────────────────────────────
+target_arch: "x86_64"
+
+# ── Packages to mirror ─────────────────────────────────────────────────
+# All packages needed for image building. The role resolves and downloads
+# these plus all their dependencies.
+# If empty, mirrors the full repos (reposync). If specified, does a
+# targeted download (dnf download --resolve) which is much faster.
+mirror_packages: []
+
+# Package groups to include (e.g. "Minimal Install", "Development Tools")
+mirror_package_groups:
+  - "Minimal Install"
+  - "Development Tools"
+
+# ── Local mirror storage ───────────────────────────────────────────────
+work_dir: "/var/lib/image-builder"
+mirror_dir: "{{ work_dir }}/repo_mirror"
+
+# ── Container settings ─────────────────────────────────────────────────
+# Everything runs inside a podman container — no host packages needed
+# beyond podman itself. The container syncs RPMs, creates repo metadata,
+# and serves the repo via nginx on the specified port.
+repo_container_name: "image-builder-repo"
+repo_container_image: "docker.io/library/nginx:alpine"
+serve_port: 8080
+
+# ── OS ─────────────────────────────────────────────────────────────────
+# Supported: rhel, almalinux, rocky, fedora
+os_family: "rhel"
+os_version: "10.0"
+
+# ── Sync behavior ──────────────────────────────────────────────────────
+# Skip download if mirror_dir already has packages (for offline re-runs)
+skip_if_cached: true

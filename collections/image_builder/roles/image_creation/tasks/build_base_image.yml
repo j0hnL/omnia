@@ -1,0 +1,156 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Build base image using:
+#   1. Containerized dnf to install packages into an installroot (fast, no host deps)
+#   2. buildah to import the rootfs, run dracut, and commit the image
+#
+# No nested image-build container needed — avoids overlay-on-overlay issues.
+---
+
+- name: Set base image name
+  ansible.builtin.set_fact:
+    _base_image_name: "{{ base_image_name }}"
+    _installroot: "{{ work_dir }}/installroot/base"
+
+- name: Generate repo config for dnf container
+  ansible.builtin.template:
+    src: "dnf-repos.repo.j2"
+    dest: "{{ work_dir }}/build-repos.repo"
+    mode: "{{ dir_permissions_644 }}"
+  vars:
+    _repos: "{{ rhel_repos | default(repos | default([])) }}"
+
+- name: Clean installroot from previous builds
+  ansible.builtin.file:
+    path: "{{ _installroot }}"
+    state: absent
+
+- name: Create installroot directory
+  ansible.builtin.file:
+    path: "{{ _installroot }}"
+    state: directory
+    mode: "{{ dir_permissions_755 }}"
+
+# ── Phase 1: Install packages via containerized dnf ────────────────────
+
+- name: "Install {{ os_family }} {{ os_version }} base packages (containerized dnf)"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      podman run --rm --network host \
+        -v {{ work_dir }}:/build:z \
+        -v {{ build_log_dir }}:/logs:z \
+        {{ _dnf_container_image }} \
+        /bin/bash -c '
+          # Replace all repos with only our build repos and clear cached metadata
+          rm -f /etc/yum.repos.d/*.repo 2>/dev/null
+          cp /build/build-repos.repo /etc/yum.repos.d/build-repos.repo
+          dnf clean all 2>/dev/null || true
+
+          # Detect dnf5 (Fedora 42+) which needs --use-host-config to read
+          # repos from the host instead of the empty installroot
+          HOST_CFG=""
+          dnf --help 2>&1 | grep -q "use-host-config" && HOST_CFG="--use-host-config"
+
+          COMMON="--installroot=/build/installroot/base $HOST_CFG --setopt=cachedir=/build/dnf-cache --setopt=tsflags=nodocs {{ '' if gpg_check | default(true) | bool else '--nogpgcheck' }} --releasever={{ os_version.split(".")[0] }}"
+
+          # Step 1: Install filesystem + setup first to create usrmerge symlinks
+          # (/bin→usr/bin, /lib→usr/lib, etc.) — required before anything else
+          dnf install -y $COMMON filesystem setup basesystem bash \
+            2>&1 | tee -a /logs/{{ target_arch }}_base_image.log
+
+          # Step 2: Install package groups (names differ by OS family)
+          {% for grp in package_groups | default(_default_package_groups) %}
+          dnf install -y $COMMON --setopt=install_weak_deps=False \
+            @"{{ grp }}" \
+            2>&1 | tee -a /logs/{{ target_arch }}_base_image.log || \
+            echo "WARNING: Package group {{ grp }} not available, skipping"
+          {% endfor %}
+
+          # Step 3: Install user-specified packages
+          dnf install -y $COMMON --setopt=install_weak_deps=False \
+            {{ base_image_packages | join(" ") }} \
+            2>&1 | tee -a /logs/{{ target_arch }}_base_image.log
+        '
+    executable: /bin/bash
+  register: dnf_result
+  changed_when: true
+
+- name: Display dnf install result
+  ansible.builtin.debug:
+    msg: "Phase 1 complete: {{ base_image_packages | length }} packages installed via containerized dnf"
+
+# ── Phase 2: buildah import + dracut + commit ──────────────────────────
+
+- name: "Build {{ _base_image_name }} image via buildah"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+
+      # Import the installroot as a tarball — this preserves all symlinks
+      # (/bin → /usr/bin, /lib → /usr/lib, etc.) that 'buildah copy' can miss
+      echo "Creating rootfs tarball from installroot..."
+      tar -C {{ _installroot }} -cf {{ work_dir }}/rootfs.tar .
+
+      # Import the tarball as a new image
+      CTR=$(buildah from scratch)
+      buildah add "$CTR" {{ work_dir }}/rootfs.tar /
+      rm -f {{ work_dir }}/rootfs.tar
+      echo "Container: $CTR (rootfs imported)"
+
+      # Run dracut to build initramfs
+      # Write commands to a script inside the container to avoid shell quoting issues
+      SCRIPT="/tmp/image_builder_cmds.sh"
+      cat > "$SCRIPT" << 'DRACUT_EOF'
+      #!/usr/bin/bash
+      set -x
+      KVER=$(ls /lib/modules/ | head -1)
+      echo "Kernel version: $KVER"
+      if [ -z "$KVER" ]; then
+        echo "WARNING: No kernel modules found, skipping dracut"
+        exit 0
+      fi
+      dracut --add dmsquash-live --add livenet --add network-manager \
+        --install /usr/lib/systemd/systemd-sysroot-fstab-check \
+        --kver "$KVER" -N -f --logfile /tmp/dracut.log 2>&1
+      echo "=== dracut log ==="
+      cat /tmp/dracut.log 2>/dev/null || true
+      DRACUT_EOF
+      chmod +x "$SCRIPT"
+      buildah copy "$CTR" "$SCRIPT" /tmp/dracut_build.sh
+      buildah run "$CTR" -- /usr/bin/bash /tmp/dracut_build.sh
+      rm -f "$SCRIPT"
+
+      # Commit locally
+      LOCAL_IMG="localhost/{{ registry_ns }}/{{ _base_image_name }}:{{ os_version }}"
+      buildah commit "$CTR" "$LOCAL_IMG"
+      echo "Committed: $LOCAL_IMG"
+
+      {% if registry_url | default('') | length > 0 %}
+      # Push to registry
+      REMOTE_IMG="{{ registry_url }}/{{ registry_ns }}/{{ _base_image_name }}:{{ os_version }}"
+      buildah tag "$LOCAL_IMG" "$REMOTE_IMG"
+      buildah push {{ '--tls-verify=false' if not (registry_tls_verify | default(false) | bool) else '' }} \
+        "$REMOTE_IMG" "docker://$REMOTE_IMG"
+      echo "Pushed: $REMOTE_IMG"
+      {% endif %}
+
+      buildah rm "$CTR" || true
+      echo "=== Base image complete: {{ _base_image_name }}:{{ os_version }} ==="
+    executable: /bin/bash
+  register: buildah_result
+  changed_when: true
+
+- name: Export base image
+  ansible.builtin.include_tasks: "{{ role_path }}/../local_storage/tasks/export_image.yml"
+  vars:
+    _export_image_name: "localhost/{{ registry_ns }}/{{ _base_image_name }}:{{ os_version }}"
+    _export_group_name: "base"
+    _export_label: "{{ os_family }} {{ os_version }} base image"
+
+- name: Display base image result
+  ansible.builtin.debug:
+    msg:
+      - "Base image: {{ _base_image_name }}:{{ os_version }}"
+      - "Output: {{ output_dir | default(work_dir + '/output') }}/base/"

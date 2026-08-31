@@ -1,0 +1,73 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+# ── Standalone mode ─────────────────────────────────────────────────────
+# When running standalone (outside Omnia), provide these directly:
+#
+#   base_image_packages:   list of RPM package names for the base image
+#   compute_images_dict:   dict mapping group name → {packages: [...]}
+#   repos:                 list of dicts with name/base_url/gpg keys
+#   os_version:            OS version tag (e.g. "10.0", "9.5", "42")
+#   os_family:             OS family (rhel, almalinux, rocky, fedora)
+#
+# If these are set, the role skips all Omnia-specific config file parsing.
+
+# Direct package list for the base image (standalone mode)
+# Example: ["kernel", "dracut", "NetworkManager", "openssh-server"]
+base_image_packages: []
+
+# Direct compute images dict (standalone mode)
+# Example: {"slurm_node_x86_64": {"functional_group": "slurm_node_x86_64", "packages": ["slurm"]}}
+compute_images_dict: {}
+
+# Direct repo list (standalone mode)
+# Example: [{"name": "baseos", "base_url": "http://mirror.example.com/rhel/10/BaseOS/x86_64/os", "gpg": ""}]
+repos: []
+
+# OS family: rhel, almalinux, rocky, fedora
+os_family: "rhel"
+
+# OS version tag for image naming (e.g. "10.0", "9.5", "42")
+os_version: "10.0"
+
+# Target architecture
+target_arch: "x86_64"
+
+# ── RHEL subscription (optional) ──────────────────────────────────────
+# For RHEL builds, provide subscription credentials to access official
+# Red Hat repos. If repos is empty and rhel_subscription is configured,
+# the collection auto-generates repo URLs from cdn.redhat.com.
+# If neither repos nor rhel_subscription is provided, falls back to
+# AlmaLinux repos (binary compatible).
+#
+# Option A: Username/password (Simple Content Access or subscription-manager)
+rhel_username: ""
+rhel_password: ""
+#
+# Option B: Organization + activation key (unattended/CI)
+rhel_org_id: ""
+rhel_activation_key: ""
+#
+# Option C: Custom Satellite/Capsule URL (on-prem)
+rhel_satellite_url: ""
+#
+# Auto-fallback to AlmaLinux repos if no RHEL credentials and no repos provided
+rhel_fallback_to_alma: true
+
+# ── Omnia integration (optional) ───────────────────────────────────────
+# These are only used when base_image_packages is empty (i.e. Omnia mode).
+# Set omnia_integration: true to enable Omnia config file parsing.
+omnia_integration: false
+
+# Path to the local_repo metadata file (written by local_repo.yml)
+metadata_file_path: "/opt/omnia/offline_repo/.data/localrepo_metadata.yml"
+
+# Path to functional_groups_config.yml
+functional_groups_config_path: "/opt/omnia/.data/functional_groups_config.yml"
+
+# Input project directory containing software_config.json, config/, etc.
+input_project_dir: "/opt/omnia/input"
+
+# Enable build_stream (GitLab CI) mode
+enable_build_stream: false

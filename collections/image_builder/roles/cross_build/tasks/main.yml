@@ -1,0 +1,27 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Cross-build aarch64 images on x86_64 using:
+#   Phase 1: Native dnf --forcearch=aarch64 --installroot (fast, no emulation)
+#   Phase 2: buildah import + QEMU-emulated dracut only (seconds, not minutes)
+---
+
+- name: Setup QEMU binfmt_misc for aarch64 emulation
+  ansible.builtin.include_tasks: setup_qemu.yml
+
+- name: Prepare cross-build workspace
+  ansible.builtin.include_tasks: prepare_workspace.yml
+
+- name: Build aarch64 base image (cross-compiled)
+  ansible.builtin.include_tasks: build_base_image.yml
+  tags: base_image
+
+- name: Build aarch64 compute images (cross-compiled)
+  ansible.builtin.include_tasks: build_compute_images.yml
+  tags: compute_image
+
+- name: Set S3 bucket ACLs for PowerScale backend
+  ansible.builtin.include_tasks: "{{ role_path }}/../image_creation/tasks/set_s3_acl.yml"
+  when:
+    - s3_provider | lower == 'powerscale'
+  tags: s3_acl

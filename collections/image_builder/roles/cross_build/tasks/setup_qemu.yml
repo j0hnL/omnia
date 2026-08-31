@@ -1,0 +1,40 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Register QEMU user-mode emulation via binfmt_misc so that aarch64
+# binaries can execute on x86_64. Uses the F (fix-binary) flag for
+# persistent registration.
+---
+
+- name: Check if aarch64 binfmt is already registered
+  ansible.builtin.stat:
+    path: /proc/sys/fs/binfmt_misc/qemu-aarch64
+  register: binfmt_aarch64_stat
+
+- name: Register QEMU binfmt_misc handlers
+  when: not (qemu_skip_if_registered | bool and binfmt_aarch64_stat.stat.exists | default(false))
+  block:
+    - name: Register QEMU user-static binfmt handlers
+      ansible.builtin.command: >
+        podman run --rm --privileged {{ qemu_binfmt_image }} --reset -p yes
+      register: qemu_register
+      changed_when: true
+
+    - name: Verify aarch64 binfmt is now registered
+      ansible.builtin.stat:
+        path: /proc/sys/fs/binfmt_misc/qemu-aarch64
+      register: binfmt_verify
+
+    - name: Fail if aarch64 binfmt registration failed
+      ansible.builtin.fail:
+        msg: "{{ qemu_setup_failure_msg }}"
+      when: not binfmt_verify.stat.exists
+
+  rescue:
+    - name: QEMU registration failed
+      ansible.builtin.fail:
+        msg: "{{ qemu_setup_failure_msg }}"
+
+- name: Display QEMU binfmt status
+  ansible.builtin.debug:
+    msg: "aarch64 QEMU binfmt_misc: {{ 'already registered' if binfmt_aarch64_stat.stat.exists | default(false) else 'newly registered' }}"

@@ -1,22 +1,19 @@
-# Fedora 44 x86_64 — latest Fedora with development tools
+# Example: Build Fedora 42 x86_64 images
 #
-# Build:
-#   ansible-playbook omnia.open_image_builder.build -e @examples/fedora_x86_64.yml
-#
-# NOTE: Fedora builds require direct mirror baseurl — Fedora's metalink
-# redirection does not work inside build containers. The URLs below use
-# dl.fedoraproject.org which is Fedora's primary CDN.
+# Usage:
+#   ansible-playbook omnia.image_builder.build_x86_64 -e @examples/fedora_x86_64.yml
 ---
-os_family: fedora
-os_version: "44"
-target_arch: x86_64
+
+os_family: "fedora"
+os_version: "42"
+target_arch: "x86_64"
 
 repos:
-  - name: fedora
-    base_url: https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os
+  - name: "fedora"
+    base_url: "https://dl.fedoraproject.org/pub/fedora/linux/releases/42/Everything/x86_64/os"
     gpg: ""
-  - name: updates
-    base_url: https://dl.fedoraproject.org/pub/fedora/linux/updates/44/Everything/x86_64
+  - name: "fedora-updates"
+    base_url: "https://dl.fedoraproject.org/pub/fedora/linux/updates/42/Everything/x86_64"
     gpg: ""
 
 base_image_packages:
@@ -26,7 +23,10 @@ base_image_packages:
   - dracut-network
   - NetworkManager
   - openssh-server
+  - openssh-clients
   - chrony
   - sudo
   - iproute
   - iputils
+
+work_dir: /var/lib/image-builder

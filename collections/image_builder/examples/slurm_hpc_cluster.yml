@@ -1,0 +1,101 @@
+# Example: HPC Slurm cluster with per-role images on Rocky Linux 10
+#
+# Builds a shared base image plus separate images for:
+#   - Slurm controller (slurmctld + slurmdbd + mariadb)
+#   - Compute nodes (slurmd + hwloc + ucx + pmix)
+#   - GPU compute nodes (slurmd + NVIDIA driver + CUDA)
+#   - Login nodes (slurm client + modules + lmod)
+#
+# Usage:
+#   ansible-playbook omnia.image_builder.build_x86_64 \
+#     -e @examples/slurm_hpc_cluster.yml
+#
+# Note: nvidia-driver and cuda-toolkit require NVIDIA's CUDA repo.
+# Add it to the repos list below or remove the gpu_node group.
+---
+
+os_family: "rocky"
+os_version: "10.0"
+target_arch: "x86_64"
+
+repos:
+  - name: "rocky-baseos"
+    base_url: "https://dl.rockylinux.org/pub/rocky/10/BaseOS/x86_64/os"
+    gpg: ""
+  - name: "rocky-appstream"
+    base_url: "https://dl.rockylinux.org/pub/rocky/10/AppStream/x86_64/os"
+    gpg: ""
+  - name: "epel"
+    base_url: "https://dl.fedoraproject.org/pub/epel/10/Everything/x86_64"
+    gpg: ""
+  # Uncomment for GPU nodes:
+  # - name: "cuda"
+  #   base_url: "https://developer.download.nvidia.com/compute/cuda/repos/rhel10/x86_64"
+  #   gpg: ""
+
+# Shared base image — all nodes get these packages
+base_image_packages:
+  - kernel
+  - dracut
+  - dracut-live
+  - dracut-network
+  - NetworkManager
+  - openssh-server
+  - openssh-clients
+  - chrony
+  - sudo
+  - iproute
+  - iputils
+  - nfs-utils
+  - libibverbs
+  - rdma-core
+  - pciutils
+  - ethtool
+  - strace
+  - tcpdump
+
+# Per-role compute images (layered on the base)
+compute_images_dict:
+  slurm_control_node_x86_64:
+    functional_group: slurm_control_node_x86_64
+    packages:
+      - slurm-slurmctld
+      - slurm-slurmdbd
+      - slurm-slurmrestd
+      - munge
+      - mariadb-server
+
+  slurm_node_x86_64:
+    functional_group: slurm_node_x86_64
+    packages:
+      - slurm-slurmd
+      - slurm-pam_slurm
+      - munge
+      - hwloc
+      - numactl
+      - ucx
+      - pmix
+
+  login_node_x86_64:
+    functional_group: login_node_x86_64
+    packages:
+      - slurm
+      - munge
+      - hwloc
+      - environment-modules
+      - lmod
+
+  # Uncomment for GPU nodes (requires CUDA repo above):
+  # gpu_node_x86_64:
+  #   functional_group: gpu_node_x86_64
+  #   packages:
+  #     - slurm-slurmd
+  #     - munge
+  #     - hwloc
+  #     - numactl
+  #     - ucx
+  #     - pmix
+  #     - nvidia-driver
+  #     - cuda-toolkit
+
+work_dir: /var/lib/image-builder

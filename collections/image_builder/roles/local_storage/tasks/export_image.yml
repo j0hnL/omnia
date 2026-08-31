@@ -1,0 +1,178 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Export a built image as squashfs to local output dir and optionally to S3.
+#
+# Required variables when calling:
+#   _export_image_name:  image tag in local buildah storage (e.g. "localhost/images/rhel-aarch64_base:10.0")
+#   _export_group_name:  subdirectory name for output (e.g. "slurm_node_x86_64" or "base")
+#   _export_label:       human-readable label for log messages
+---
+
+- name: "Create output directory for {{ _export_label }}"
+  ansible.builtin.file:
+    path: "{{ output_dir }}/{{ _export_group_name }}"
+    state: directory
+    mode: "0755"
+
+- name: "Export {{ _export_label }} — mount image"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      CTR=$(buildah from "{{ _export_image_name }}")
+      MOUNT_POINT=$(buildah mount "$CTR")
+      echo "$CTR $MOUNT_POINT"
+    executable: /bin/bash
+  register: mount_result
+  changed_when: true
+
+- name: Parse mount result
+  ansible.builtin.set_fact:
+    _export_ctr: "{{ mount_result.stdout.split()[0] }}"
+    _export_mount: "{{ mount_result.stdout.split()[1] }}"
+
+- name: "Export {{ _export_label }} — create squashfs + extract kernel"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+
+      # Install squashfs-tools on the host if not present
+      if ! command -v mksquashfs &>/dev/null; then
+        dnf install -y squashfs-tools 2>/dev/null || \
+        yum install -y squashfs-tools 2>/dev/null || \
+        echo "WARNING: mksquashfs not found, installing via container"
+      fi
+
+      # Create squashfs — use host mksquashfs if available, otherwise container
+      if command -v mksquashfs &>/dev/null; then
+        mksquashfs {{ _export_mount }} \
+          {{ output_dir }}/{{ _export_group_name }}/rootfs \
+          -comp {{ squashfs_compression | default("zstd") }} \
+          -Xcompression-level {{ squashfs_comp_level | default(3) }} \
+          -noappend -no-progress
+      else
+        podman run --rm \
+          -v {{ _export_mount }}:/rootfs:ro \
+          -v {{ output_dir }}/{{ _export_group_name }}:/output:z \
+          {{ _dnf_container_image | default('docker.io/library/rockylinux:9') }} \
+          /bin/bash -c '
+            dnf install -y squashfs-tools 2>/dev/null
+            mksquashfs /rootfs /output/rootfs \
+              -comp {{ squashfs_compression | default("zstd") }} \
+              -Xcompression-level {{ squashfs_comp_level | default(3) }} \
+              -noappend -no-progress
+          '
+      fi
+
+      # Extract kernel and initramfs for PXE boot
+      KVER=$(ls {{ _export_mount }}/lib/modules/ 2>/dev/null | head -1 || true)
+      if [ -n "$KVER" ]; then
+        # vmlinuz: check /boot (RHEL/Rocky/Alma) then /lib/modules (Fedora 42+)
+        if [ -f "{{ _export_mount }}/boot/vmlinuz-$KVER" ]; then
+          cp "{{ _export_mount }}/boot/vmlinuz-$KVER" {{ output_dir }}/{{ _export_group_name }}/vmlinuz
+          echo "Exported kernel: /boot/vmlinuz-$KVER"
+        elif [ -f "{{ _export_mount }}/lib/modules/$KVER/vmlinuz" ]; then
+          cp "{{ _export_mount }}/lib/modules/$KVER/vmlinuz" {{ output_dir }}/{{ _export_group_name }}/vmlinuz
+          echo "Exported kernel: /lib/modules/$KVER/vmlinuz (Fedora layout)"
+        fi
+
+        # initramfs: RHEL-family uses initramfs-<kver>.img, Debian uses initrd.img-<kver>
+        if [ -f "{{ _export_mount }}/boot/initramfs-$KVER.img" ]; then
+          cp "{{ _export_mount }}/boot/initramfs-$KVER.img" {{ output_dir }}/{{ _export_group_name }}/initramfs.img
+          echo "Exported initramfs: /boot/initramfs-$KVER.img"
+        elif [ -f "{{ _export_mount }}/boot/initrd.img-$KVER" ]; then
+          cp "{{ _export_mount }}/boot/initrd.img-$KVER" {{ output_dir }}/{{ _export_group_name }}/initramfs.img
+          echo "Exported initramfs: /boot/initrd.img-$KVER (Debian layout)"
+        fi
+      fi
+
+      ls -lh {{ output_dir }}/{{ _export_group_name }}/
+    executable: /bin/bash
+  register: export_result
+  changed_when: true
+
+- name: "Cleanup buildah mount for {{ _export_label }}"
+  ansible.builtin.shell:
+    cmd: |
+      buildah umount "{{ _export_ctr }}"
+      buildah rm "{{ _export_ctr }}"
+    executable: /bin/bash
+  changed_when: true
+
+- name: "Generate manifest.json for {{ _export_label }}"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      OUT="{{ output_dir }}/{{ _export_group_name }}"
+      cd "$OUT"
+
+      checksum() { [ -f "$1" ] && sha256sum "$1" | awk '{print $1}' || echo ""; }
+      filesize() { [ -f "$1" ] && stat -c%s "$1" || echo 0; }
+
+      cat > manifest.json << MANIFEST_EOF
+      {
+        "image_name": "{{ _export_group_name }}",
+        "os_family": "{{ os_family | default('rhel') }}",
+        "os_version": "{{ os_version | default('') }}",
+        "target_arch": "{{ target_arch | default('x86_64') }}",
+        "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "source_image": "{{ _export_image_name }}",
+        "files": {
+          "rootfs": {
+            "size_bytes": $(filesize rootfs),
+            "sha256": "$(checksum rootfs)",
+            "compression": "{{ squashfs_compression | default('zstd') }}"
+          },
+          "vmlinuz": {
+            "size_bytes": $(filesize vmlinuz),
+            "sha256": "$(checksum vmlinuz)"
+          },
+          "initramfs": {
+            "size_bytes": $(filesize initramfs.img),
+            "sha256": "$(checksum initramfs.img)"
+          }
+        }
+      }
+      MANIFEST_EOF
+
+      # Also write a SHA256SUMS file for easy verification
+      sha256sum rootfs vmlinuz initramfs.img 2>/dev/null > SHA256SUMS || true
+
+      echo "Manifest written to $OUT/manifest.json"
+      cat manifest.json
+    executable: /bin/bash
+  changed_when: true
+
+- name: "Display local export result for {{ _export_label }}"
+  ansible.builtin.debug:
+    msg:
+      - "Exported: {{ output_dir }}/{{ _export_group_name }}/"
+      - "{{ export_result.stdout_lines | last | default('') }}"
+      - "Manifest: {{ output_dir }}/{{ _export_group_name }}/manifest.json"
+
+- name: "Upload {{ _export_label }} to S3"
+  when: publish_s3 | default(false) | bool
+  block:
+    - name: "Upload to S3 via containerized mc: {{ _export_group_name }}"
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          podman run --rm --network host \
+            -v {{ output_dir }}/{{ _export_group_name }}:/upload:ro \
+            --entrypoint /bin/sh \
+            docker.io/minio/mc \
+            -c '
+              mc alias set _ib {{ s3_endpoint }} {{ s3_access_id }} {{ s3_secret_key }}
+              for f in /upload/*; do
+                [ -f "$f" ] || continue
+                mc cp "$f" "_ib/{{ s3_bucket }}/{{ _export_group_name }}/$(basename $f)"
+              done
+            '
+        executable: /bin/bash
+      register: s3_upload_result
+      changed_when: true
+      no_log: true
+
+    - name: "Display S3 upload result for {{ _export_label }}"
+      ansible.builtin.debug:
+        msg: "S3: {{ s3_endpoint }}/{{ s3_bucket }}/{{ _export_group_name }}/"

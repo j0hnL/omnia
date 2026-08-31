@@ -1,0 +1,20 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# This role:
+#   1. Always creates the local output directory for exported images
+#   2. Optionally deploys a local MinIO container when S3 is requested
+#      but no external endpoint is provided
+---
+
+- name: Create local output directory
+  ansible.builtin.file:
+    path: "{{ output_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Deploy local MinIO for S3 storage
+  ansible.builtin.include_tasks: deploy_minio.yml
+  when:
+    - publish_s3 | default(false) | bool
+    - s3_endpoint | default('') | length == 0

@@ -1,0 +1,28 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+- name: Fetch pulp endpoints
+  block:
+    - name: Fetch pulp endpoints
+      ansible.builtin.command: >
+        pulp rpm distribution list --field name,base_url
+      register: pulp_endpoints
+      changed_when: false
+
+    - name: Filter distributions for target architecture
+      ansible.builtin.set_fact:
+        pulp_arch_distributions: >-
+          {{ pulp_endpoints.stdout | from_json
+            | selectattr('name', 'match', '^' + target_arch)
+            | list }}
+
+    - name: Build rhel_repos list from pulp distributions
+      ansible.builtin.set_fact:
+        rhel_repos: >-
+          {{ pulp_arch_distributions | map('combine', {'gpg': ''}) | list }}
+
+    - name: Debug rhel_repos
+      ansible.builtin.debug:
+        msg: "{{ rhel_repos | to_nice_yaml(indent=2) }}"
+        verbosity: 2

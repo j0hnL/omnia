@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  role_name: repo_mirror
+  author: Dell Omnia Team
+  description: >
+    Create a local RPM repository mirror for fully offline/air-gapped
+    image builds. Downloads packages from upstream repos, creates a
+    local repo with createrepo, and serves it via HTTP.
+  license: Apache-2.0
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+        - "10"
+  galaxy_tags:
+    - repo
+    - mirror
+    - offline
+    - airgap
+dependencies: []

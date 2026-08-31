@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  role_name: local_storage
+  author: Dell Omnia Team
+  description: >
+    Manages local image storage: always exports squashfs rootfs images to
+    a local output directory, and optionally deploys a MinIO container
+    for S3-compatible object storage when no external S3 is provided.
+  license: Apache-2.0
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+        - "10"
+  galaxy_tags:
+    - storage
+    - minio
+    - s3
+    - image
+dependencies: []

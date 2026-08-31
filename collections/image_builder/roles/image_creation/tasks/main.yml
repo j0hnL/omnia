@@ -1,0 +1,24 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Build OS images using direct buildah commands on the host.
+# No nested container (image-build) needed — avoids overlay-on-overlay issues.
+---
+
+- name: Prepare build workspace
+  ansible.builtin.include_tasks: prepare_workspace.yml
+
+- name: Build base image (rpm-based OS)
+  ansible.builtin.include_tasks: build_base_image.yml
+  when: _pkg_family == 'rpm'
+  tags: base_image
+
+- name: Build base image (deb-based OS)
+  ansible.builtin.include_tasks: build_base_image_deb.yml
+  when: _pkg_family == 'deb'
+  tags: base_image
+
+- name: Build compute images
+  ansible.builtin.include_tasks: build_compute_images.yml
+  when: compute_images_dict | default({}) | length > 0
+  tags: compute_image

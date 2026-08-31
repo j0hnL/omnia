@@ -1,0 +1,49 @@
+# Example: Cross-build aarch64 images on x86_64 (no ARM node, no Omnia)
+#
+# Usage:
+#   ansible-playbook omnia.image_builder.build_aarch64 \
+#     -e @examples/standalone_aarch64_crossbuild.yml
+---
+
+os_family: "rhel"
+os_version: "10.0"
+target_arch: "aarch64"
+
+# RPM repos — must serve aarch64 packages
+repos:
+  - name: "rhel-10-baseos-aarch64"
+    base_url: "http://mirror.example.com/rhel/10/BaseOS/aarch64/os"
+    gpg: ""
+  - name: "rhel-10-appstream-aarch64"
+    base_url: "http://mirror.example.com/rhel/10/AppStream/aarch64/os"
+    gpg: ""
+
+# Packages for the base image
+base_image_packages:
+  - kernel
+  - dracut
+  - dracut-live
+  - dracut-network
+  - NetworkManager
+  - openssh-server
+  - openssh-clients
+  - chrony
+  - sudo
+  - iproute
+  - iputils
+
+# Compute images (optional)
+compute_images_dict:
+  slurm_node_aarch64:
+    functional_group: "slurm_node_aarch64"
+    packages:
+      - slurm
+      - slurm-slurmd
+      - munge
+
+# Build workspace
+work_dir: "/var/lib/image-builder"
+
+# Registry (optional)
+# registry_url: "registry.example.com:5000"
+# registry_ns: "myproject"

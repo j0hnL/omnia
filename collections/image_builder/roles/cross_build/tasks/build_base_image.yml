@@ -1,0 +1,184 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Cross-build aarch64 base image on x86_64:
+#
+#   Phase 1 (NATIVE x86_64, fast):
+#     - dnf --forcearch=aarch64 --installroot=<path> install <packages>
+#     - Runs native x86_64 dnf to download and unpack aarch64 RPMs
+#     - No emulation overhead — this is the bottleneck that's now eliminated
+#
+#   Phase 2 (QEMU aarch64, very short):
+#     - buildah from scratch --arch arm64
+#     - buildah copy <ctr> <installroot> /
+#     - buildah run <ctr> -- dracut ...    (only step that needs QEMU)
+#     - buildah commit + push
+---
+
+- name: Create cross-build log file
+  ansible.builtin.file:
+    path: "{{ build_log_dir }}/cross_build_aarch64_base.log"
+    state: touch
+    mode: "{{ dir_permissions_644 }}"
+
+- name: Clean installroot from previous builds
+  ansible.builtin.file:
+    path: "{{ cross_build_root }}/installroot"
+    state: absent
+
+- name: Recreate clean installroot directory
+  ansible.builtin.file:
+    path: "{{ cross_build_root }}/installroot"
+    state: directory
+    mode: "{{ dir_permissions_755 }}"
+
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 1: Native x86_64 dnf installing aarch64 packages (FAST)
+# ═══════════════════════════════════════════════════════════════════════
+
+- name: Generate dnf repo config for aarch64 Pulp repos
+  ansible.builtin.template:
+    src: "cross-build-repos.repo.j2"
+    dest: "{{ cross_build_root }}/aarch64-repos.repo"
+    mode: "{{ dir_permissions_644 }}"
+
+- name: Ensure dnf cache directory exists
+  ansible.builtin.file:
+    path: "{{ cross_build_root }}/dnf-cache"
+    state: directory
+    mode: "{{ dir_permissions_755 }}"
+
+- name: "Phase 1: Install aarch64 packages via containerized dnf --forcearch"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      podman run --rm --network host \
+        -v {{ cross_build_root }}:/build:z \
+        -v {{ build_log_dir }}:/logs:z \
+        {{ _dnf_container_image }} \
+        /bin/bash -c '
+          rm -f /etc/yum.repos.d/*.repo 2>/dev/null; cp /build/aarch64-repos.repo /etc/yum.repos.d/aarch64-repos.repo
+          dnf clean all 2>/dev/null || true
+          HOST_CFG=""; dnf --help 2>&1 | grep -q "use-host-config" && HOST_CFG="--use-host-config"
+
+          COMMON="--forcearch=aarch64 --installroot=/build/installroot $HOST_CFG --setopt=cachedir=/build/dnf-cache --setopt=tsflags=nodocs {{ '' if gpg_check | default(true) | bool else '--nogpgcheck' }} --releasever={{ os_version }}"
+
+          # Step 1: filesystem + bash first (creates usrmerge symlinks)
+          dnf install -y $COMMON filesystem setup basesystem bash \
+            2>&1 | tee -a /logs/cross_build_aarch64_base.log
+
+          # Step 2: package groups
+          {% for grp in package_groups | default(_default_package_groups) %}
+          dnf install -y $COMMON --setopt=install_weak_deps=False \
+            @"{{ grp }}" \
+            2>&1 | tee -a /logs/cross_build_aarch64_base.log || \
+            echo "WARNING: Package group {{ grp }} not available, skipping"
+          {% endfor %}
+
+          # Step 3: user packages
+          dnf install -y $COMMON --setopt=install_weak_deps=False \
+            {{ base_image_packages | join(" ") }} \
+            2>&1 | tee -a /logs/cross_build_aarch64_base.log
+        '
+    executable: /bin/bash
+  register: dnf_install_result
+  changed_when: true
+
+- name: Display Phase 1 (native dnf) completion
+  ansible.builtin.debug:
+    msg: "Phase 1 complete: {{ base_image_packages | length }} aarch64 packages installed natively in {{ dnf_install_result.delta | default('N/A') }}"
+
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 2: buildah import + QEMU dracut (short, seconds not minutes)
+# ═══════════════════════════════════════════════════════════════════════
+
+- name: "Phase 2: Create buildah container from installroot"
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+
+      # Import installroot as tarball (preserves symlinks like /bin → /usr/bin)
+      echo "Creating rootfs tarball..."
+      tar -C {{ cross_build_root }}/installroot -cf {{ cross_build_root }}/rootfs.tar .
+
+      # Create an aarch64 container from scratch and import rootfs
+      CTR=$(buildah from --arch arm64 scratch)
+      buildah add "$CTR" {{ cross_build_root }}/rootfs.tar /
+      rm -f {{ cross_build_root }}/rootfs.tar
+      echo "Container: $CTR (rootfs imported)"
+
+      # Run dracut under QEMU (script file avoids shell quoting issues)
+      SCRIPT="/tmp/dracut_build.sh"
+      cat > "$SCRIPT" << 'DRACUT_SCRIPT'
+      #!/usr/bin/bash
+      set -x
+      KVER=$(ls /lib/modules/ | head -1)
+      echo "Kernel version: $KVER"
+      if [ -z "$KVER" ]; then
+        echo "WARNING: No kernel modules found, skipping dracut"
+        exit 0
+      fi
+      dracut --add dmsquash-live --add livenet --add network-manager \
+        --install /usr/lib/systemd/systemd-sysroot-fstab-check \
+        --kver "$KVER" -N -f --logfile /tmp/dracut.log 2>&1
+      echo "=== dracut log ==="
+      cat /tmp/dracut.log 2>/dev/null || true
+      DRACUT_SCRIPT
+      chmod +x "$SCRIPT"
+      buildah copy "$CTR" "$SCRIPT" /tmp/dracut_build.sh
+      buildah run "$CTR" -- /usr/bin/bash /tmp/dracut_build.sh
+      rm -f "$SCRIPT"
+
+      # Commit the image locally
+      LOCAL_IMG="localhost/{{ registry_ns }}/{{ base_image_name }}:{{ os_version }}"
+      buildah commit "$CTR" "$LOCAL_IMG"
+      echo "Local image: $LOCAL_IMG"
+
+      {% if registry_url | default('') | length > 0 %}
+      # Push to remote registry
+      REMOTE_IMG="{{ registry_url }}/{{ registry_ns }}/{{ base_image_name }}:{{ os_version }}"
+      buildah tag "$LOCAL_IMG" "$REMOTE_IMG"
+      buildah push {{ '--tls-verify=false' if not (registry_tls_verify | default(false) | bool) else '' }} \
+        "$REMOTE_IMG" "docker://$REMOTE_IMG"
+      echo "=== Pushed to registry: $REMOTE_IMG ==="
+      {% else %}
+      echo "=== Registry publishing skipped (registry_url not set) ==="
+      {% endif %}
+
+      # Cleanup
+      buildah rm "$CTR" || true
+    executable: /bin/bash
+  register: buildah_base_result
+  changed_when: true
+  async: 1800
+  poll: 30
+
+- name: Verify aarch64 base osimage in registry
+  ansible.builtin.command:
+    cmd: "regctl repo ls {{ registry_url }}"
+  changed_when: false
+  register: verify_base_osimage
+  when: registry_url | default('') | length > 0
+
+- name: Verify local image exists
+  ansible.builtin.command:
+    cmd: "buildah images --format '{{ '{{' }}.Name{{ '}}' }}:{{ '{{' }}.Tag{{ '}}' }}' | grep {{ base_image_name }}:{{ os_version }}"
+  changed_when: false
+  register: verify_local_image
+  when: registry_url | default('') | length == 0
+
+- name: Export base image to local output + S3
+  ansible.builtin.include_tasks: "{{ role_path }}/../local_storage/tasks/export_image.yml"
+  vars:
+    _export_image_name: "localhost/{{ registry_ns }}/{{ base_image_name }}:{{ os_version }}"
+    _export_group_name: "base"
+    _export_label: "aarch64 base image"
+
+- name: Display base image build result
+  ansible.builtin.debug:
+    msg:
+      - "aarch64 base image cross-build complete"
+      - "Image: {{ registry_ns }}/{{ base_image_name }}:{{ os_version }}"
+      - "Local: {{ output_dir | default(work_dir + '/output') }}/base/"
+      - "Registry: {{ registry_url | default('local only') }}"
+      - "S3: {{ (publish_s3 | default(false) | bool) | ternary(s3_endpoint | default('') + '/' + s3_bucket | default('boot-images') + '/base/', 'disabled') }}"

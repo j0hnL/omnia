@@ -1,0 +1,57 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+
+# ── Registry (optional) ────────────────────────────────────────────────
+# OCI registry to publish images to. Leave empty to skip.
+registry_url: ""
+registry_ns: "images"
+# TLS verification for registry push/pull (disable only for self-signed certs)
+registry_tls_verify: true
+
+# ── Target architecture ────────────────────────────────────────────────
+target_arch: "aarch64"
+host_arch: "{{ ansible_architecture | default('x86_64') }}"
+
+# ── OS ─────────────────────────────────────────────────────────────────
+# Supported: rhel, almalinux, rocky, fedora
+os_family: "rhel"
+os_version: "10.0"
+
+# ── Work directory ──────────────────────────────────────────────────────
+work_dir: "/var/lib/image-builder"
+
+# ── S3 publishing (optional) ───────────────────────────────────────────
+# Pass credentials via -e, vault, or env vars — never commit secrets.
+publish_s3: false
+s3_endpoint: ""
+s3_access_id: ""
+s3_secret_key: ""
+s3_bucket: "boot-images"
+
+# ── CA certificate (optional) ──────────────────────────────────────────
+ca_cert_path: ""
+
+# ── Build retries ──────────────────────────────────────────────────────
+job_retry: "120"
+job_delay: "30"
+
+# ── GPG verification ──────────────────────────────────────────────────
+# When true, dnf respects gpgcheck settings from the repo config.
+# When false, passes --nogpgcheck to dnf (NOT recommended for production).
+gpg_check: true
+
+# ── Image naming ───────────────────────────────────────────────────────
+image_name_suffix: ""
+
+# ── Build stream (CI) ──────────────────────────────────────────────────
+enable_build_stream: false
+build_stream_job_id: ""
+image_key: ""
+
+# ── QEMU setup ─────────────────────────────────────────────────────────
+qemu_binfmt_image: "docker.io/multiarch/qemu-user-static"
+qemu_skip_if_registered: true
+
+# ── Cross-build workspace ──────────────────────────────────────────────
+cross_build_root: "{{ work_dir }}/cross_build"
