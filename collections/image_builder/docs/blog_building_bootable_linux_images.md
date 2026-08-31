@@ -36,7 +36,7 @@ ansible-playbook omnia.open_image_builder.build -e @my_image.yml
 
 ## How It Works
 
-The entire build runs inside containers. The host needs podman, buildah, and Ansible.
+The entire build runs inside containers. The host needs podman, buildah, and Ansible.
 That's the full dependency list.
 
 [OpenCHAMI image-thrillhouse](https://github.com/OpenCHAMI/image-thrillhouse)
