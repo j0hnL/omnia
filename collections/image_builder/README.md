@@ -387,7 +387,7 @@ the `build` role invokes `image-thrillhouse` which handles package installation,
 buildah operations, and publishing.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │  Build Host                                                      │
 │                                                                  │
 │  1. CONFIG_GEN (Ansible role)                                    │
@@ -399,23 +399,23 @@ buildah operations, and publishing.
 │                                                                  │
 │  2. BUILD (Ansible role → image-thrillhouse)                     │
 │     For each config in build_manifest.yml:                       │
-│     ┌─────────────────────────────────────────────────────┐      │
-│     │ image-thrillhouse build --config <config>.yaml      │      │
-│     │                                                     │      │
-│     │  meta:                                              │      │
-│     │    name: rocky-x86_64_base                          │      │
-│     │    from: scratch                                    │      │
-│     │  layer:                                             │      │
-│     │    manager: { name: dnf, options: {releasever: 10}} │      │
-│     │    repos: [{path: ..., content: ...}]               │      │
-│     │    actions: { install: {groups: [...], packages: [..]} │      │
-│     │  publish:                                           │      │
-│     │    - type: local                                    │      │
-│     │    - type: squashfs                                 │      │
-│     │    - type: registry  (optional)                     │      │
-│     │    - type: s3        (optional)                     │      │
-│     └─────────────────────────────────────────────────────┘      │
-│     For cross-build: DNF arch= config + QEMU binfmt_misc       │
+│     ┌────────────────────────────────────────────────────────┐   │
+│     │ image-thrillhouse build --config <config>.yaml         │   │
+│     │                                                        │   │
+│     │  meta:                                                 │   │
+│     │    name: rocky-x86_64_base                             │   │
+│     │    from: scratch                                       │   │
+│     │  layer:                                                │   │
+│     │    manager: { name: dnf, options: {releasever: 10}}    │   │
+│     │    repos: [{path: ..., content: ...}]                  │   │
+│     │    actions: { install: {groups: [...], packages: [..]} │   │
+│     │  publish:                                              │   │
+│     │    - type: local                                       │   │
+│     │    - type: squashfs                                    │   │
+│     │    - type: registry  (optional)                        │   │
+│     │    - type: s3        (optional)                        │   │
+│     └────────────────────────────────────────────────────────┘   │
+│     For cross-build: DNF arch= config + QEMU binfmt_misc         │
 │                                                                  │
 │  3. EXPORT (PXE artifacts)                                       │
 │     Extract vmlinuz from /boot/ or /lib/modules/                 │
@@ -426,7 +426,7 @@ buildah operations, and publishing.
 │    rootfs          (squashfs, zstd compressed)                   │
 │    vmlinuz         (kernel binary)                               │
 │    initramfs.img   (dracut initramfs)                            │
-└─────────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 #### Why cross-builds are slower
@@ -666,24 +666,24 @@ or **25 GB free** for offline builds.
 image_builder/
 ├── galaxy.yml
 ├── README.md
-├── argo/                 ← Argo Workflows deployment (Containerfile, manifests)
+├── argo/                                   ← Argo Workflows deployment (Containerfile, manifests)
 ├── examples/
 │   ├── rocky_x86_64.yml                    ← Rocky Linux 10
-│   ├── almalinux_x86_64.yml               ← AlmaLinux 10
+│   ├── almalinux_x86_64.yml                ← AlmaLinux 10
 │   ├── fedora_x86_64.yml                   ← Fedora 44
 │   ├── ubuntu_x86_64.yml                   ← Ubuntu 24.04
 │   ├── debian_x86_64.yml                   ← Debian 12
-│   ├── slurm_hpc_cluster.yml             ← HPC Slurm cluster (4 node roles)
+│   ├── slurm_hpc_cluster.yml               ← HPC Slurm cluster (4 node roles)
 │   ├── wolfi_x86_64.yml                    ← Wolfi (minimal supply-chain-secure)
-│   ├── standalone_x86_64.yml              ← RHEL with direct repos
-│   ├── standalone_aarch64_crossbuild.yml  ← ARM cross-build
-│   └── offline_x86_64.yml                 ← Air-gapped build
+│   ├── standalone_x86_64.yml               ← RHEL with direct repos
+│   ├── standalone_aarch64_crossbuild.yml   ← ARM cross-build
+│   └── offline_x86_64.yml                  ← Air-gapped build
 ├── playbooks/
 │   ├── build.yml                           ← Unified build playbook (preferred)
 │   ├── build_x86_64.yml                    ← x86_64 convenience wrapper
 │   └── build_aarch64.yml                   ← aarch64 convenience wrapper
 ├── plugins/
-│   ├── modules/                           ← Omnia integration only
+│   ├── modules/                            ← Omnia integration only
 │   └── module_utils/
 ├── roles/
 │   ├── config_gen/       ← Generate image-thrillhouse YAML from Omnia vars (NEW)
