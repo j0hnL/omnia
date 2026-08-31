@@ -69,11 +69,15 @@ Real numbers from a Dell PowerEdge (2x Xeon Gold 6330, NVMe, RHEL 10.2):
 | Wolfi x86_64 | 6m 10s | 39 MB | 15 |
 | Rocky 10 aarch64 (cross) | 21m 23s | 724 MB | 432 |
 
-The Wolfi number is not a typo. 39 MB for a usable Linux image. Chainguard
-built Wolfi with granular packages and no legacy cruft — you get exactly what
-you install and nothing else. It won't PXE-boot bare metal (no kernel), but
-for containerized HPC workloads where image transfer time matters, it's hard
-to argue with 39 MB vs 865 MB.
+A note on the Wolfi number: 39 MB is real, but it's a minimal base image --
+bash, curl, openssh, and not much else. No kernel, no compilers, no MPI
+stack. The Rocky image includes "Minimal Install" + "Development Tools"
+(gcc, make, kernel, dracut). These aren't comparable workloads. A production
+HPC compute node needs compilers, MPI, RDMA, and Slurm on top of either
+base, and Wolfi's package ecosystem doesn't include most of those -- it's
+built for cloud-native containers, not Fortran and InfiniBand. Wolfi makes
+sense for lightweight services running alongside the cluster (inference
+endpoints, monitoring, data pipelines), not for the nodes running MPI jobs.
 
 ## Cross-Architecture Builds Without ARM Hardware
 

@@ -149,11 +149,13 @@ and installs packages via `apk add` commands.
 > supply-chain security. It uses the `apk` package format (like Alpine, but
 > glibc-based and not binary-compatible with Alpine), builds every package
 > from source with build-time SBOMs, and is designed for minimal attack
-> surface. Wolfi images are dramatically smaller than traditional distros
-> (~39 MB vs ~870 MB for an EL base image) because packages are granular
-> and independent — you install only what you need. This makes Wolfi a
-> strong choice for lightweight, security-hardened compute node images
-> where CVE exposure and image transfer times matter.
+> surface. A minimal Wolfi image is ~39 MB vs ~870 MB for an EL base image,
+> but this is not an apples-to-apples comparison — the EL image includes
+> kernel, dracut, and development tools that Wolfi doesn't have. Wolfi's
+> package ecosystem targets cloud-native containers, not HPC workloads
+> (no MPI, RDMA, or Fortran compilers). Wolfi is a good fit for lightweight
+> containerized services running alongside HPC clusters (inference endpoints,
+> monitoring, data pipelines), not for bare-metal compute nodes.
 
 ## Examples by Use Case
 
@@ -631,8 +633,9 @@ package download, install, dracut initramfs generation, buildah commit, and
 squashfs export. Repos were accessed over network (not cached).
 
 **Wolfi builds** start from a parent image (`cgr.dev/chainguard/wolfi-base`)
-and install 15 packages via `apk add`. The squashfs is much smaller (39 MB vs
-~870 MB) because Wolfi packages are granular and the base image is minimal.
+and install 15 packages via `apk add`. The 39 MB squashfs reflects a minimal
+base — not a comparable workload to the EL images which include kernel,
+dracut, and development tools.
 
 > **Fedora note:** Fedora's metalink redirection does not resolve inside build
 > containers. Use a direct mirror URL instead, e.g.
