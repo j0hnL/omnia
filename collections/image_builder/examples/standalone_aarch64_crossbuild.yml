@@ -1,7 +1,7 @@
 # Example: Cross-build aarch64 images on x86_64 (no ARM node, no Omnia)
 #
 # Usage:
-#   ansible-playbook omnia.image_builder.build_aarch64 \
+#   ansible-playbook omnia.open_image_builder.build_aarch64 \
 #     -e @examples/standalone_aarch64_crossbuild.yml
 ---
 

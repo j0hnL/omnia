@@ -30,7 +30,7 @@ spec:
         command: ["/usr/bin/bash", "-c"]
         args:
           - |
-            ansible-playbook omnia.image_builder.build_x86_64 \
+            ansible-playbook omnia.open_image_builder.build_x86_64 \
               -e @/config/image-vars.yml \
               -v
         volumeMounts:

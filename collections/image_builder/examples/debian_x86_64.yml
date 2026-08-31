@@ -1,7 +1,7 @@
 # Example: Build Debian 12 (Bookworm) x86_64 images
 #
 # Usage:
-#   ansible-playbook omnia.image_builder.build_x86_64 -e @examples/debian_x86_64.yml
+#   ansible-playbook omnia.open_image_builder.build_x86_64 -e @examples/debian_x86_64.yml
 #
 # Debian builds use debootstrap + apt. os_version "12" maps to codename
 # "bookworm" automatically.

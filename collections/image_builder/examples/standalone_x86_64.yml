@@ -1,7 +1,7 @@
 # Example: Build x86_64 images standalone (no Omnia installation required)
 #
 # Usage:
-#   ansible-playbook omnia.image_builder.build_x86_64 -e @examples/standalone_x86_64.yml
+#   ansible-playbook omnia.open_image_builder.build_x86_64 -e @examples/standalone_x86_64.yml
 ---
 
 os_family: "rhel"

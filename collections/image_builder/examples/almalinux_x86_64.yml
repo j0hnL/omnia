@@ -1,7 +1,7 @@
 # Example: Build AlmaLinux 10 x86_64 images
 #
 # Usage:
-#   ansible-playbook omnia.image_builder.build_x86_64 -e @examples/almalinux_x86_64.yml
+#   ansible-playbook omnia.open_image_builder.build_x86_64 -e @examples/almalinux_x86_64.yml
 ---
 
 os_family: "almalinux"

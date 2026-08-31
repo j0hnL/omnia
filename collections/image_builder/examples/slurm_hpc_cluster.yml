@@ -7,7 +7,7 @@
 #   - Login nodes (slurm client + modules + lmod)
 #
 # Usage:
-#   ansible-playbook omnia.image_builder.build_x86_64 \
+#   ansible-playbook omnia.open_image_builder.build_x86_64 \
 #     -e @examples/slurm_hpc_cluster.yml
 #
 # Note: nvidia-driver and cuda-toolkit require NVIDIA's CUDA repo.

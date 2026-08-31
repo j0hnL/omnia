@@ -119,9 +119,9 @@ and Wolfi.
 | Tool | What it does | What it doesn't do |
 |---|---|---|
 | **This collection** | Declarative YAML to squashfs, any host OS, 7 distros, ARM cross-build, offline, CI-ready | Not a provisioner — doesn't manage PXE servers, DHCP, or node lifecycle |
-| **Warewulf** | Full provisioning stack with image builds | Tightly coupled — can't use the image builder without the rest of Warewulf |
+| **Warewulf** | Full provisioning stack with OCI-based images | Image delivery tied to Warewulf provisioning stack |
 | **lorax / livemedia-creator** | Official Fedora/RHEL image tooling | Fedora/RHEL only, must run on a matching host OS |
-| **live-build** | Debian/Ubuntu live images | Debian only |
+| **live-build** | Debian/Ubuntu live images | Debian/Ubuntu only, no RPM-based distros |
 | **Packer** | VM images (QEMU, VMware, cloud) | VM-oriented — not designed for bare-metal PXE squashfs |
 | **Foreman / Cobbler** | Full lifecycle provisioning | Heavy infrastructure (databases, services, web UI) |
 | **Shell scripts** | Whatever you write | Fragile, untestable, non-portable, undocumented |
@@ -224,7 +224,7 @@ compute_images_dict:
       - munge
       - hwloc
       - environment-modules
-      - lmod
+      - Lmod
   gpu_node_x86_64:
     functional_group: gpu_node_x86_64
     packages:
@@ -237,6 +237,10 @@ compute_images_dict:
       - nvidia-driver
       - cuda-toolkit
 ```
+
+> **Note**: The `nvidia-driver` and `cuda-toolkit` packages require adding
+> [NVIDIA's CUDA repo](https://developer.nvidia.com/cuda-downloads) to the
+> `repos` list. They are not available in BaseOS, AppStream, or EPEL.
 
 ```bash
 ansible-playbook omnia.open_image_builder.build -e @slurm_hpc_cluster.yml
@@ -825,7 +829,7 @@ and follows its open-source values.
 
 ```bash
 cd collections/image_builder
-make test      # run the 284-test pytest suite
+make test      # run the 286-test pytest suite
 make lint      # yamllint + ansible-lint
 make help      # see all developer tasks
 ```

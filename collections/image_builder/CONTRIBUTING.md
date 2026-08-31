@@ -65,7 +65,7 @@ ls -lh /var/lib/image-builder/output/base/
 
 ### Ansible
 
-- Use **FQCN** everywhere: `omnia.image_builder.role_name`, `ansible.builtin.shell`
+- Use **FQCN** everywhere: `omnia.open_image_builder.role_name`, `ansible.builtin.shell`
 - Every role needs `meta/main.yml` and `defaults/main.yml`
 - Keep OS-specific logic in the `os_family` mapping, not scattered conditionals
 - Don't add comments to YAML unless they explain non-obvious behavior

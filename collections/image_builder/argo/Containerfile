@@ -17,7 +17,7 @@ COPY . /tmp/collection-src
 
 RUN cd /tmp/collection-src \
     && ansible-galaxy collection build --force \
-    && ansible-galaxy collection install omnia-image_builder-*.tar.gz --force \
+    && ansible-galaxy collection install omnia-open_image_builder-*.tar.gz --force \
     && ansible-galaxy collection install containers.podman --force \
     && rm -rf /tmp/collection-src
 

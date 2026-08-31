@@ -2,7 +2,7 @@
 """Convert Omnia software_config.json to standalone image_builder vars.
 
 Reads Omnia's software_config.json and the per-bundle package JSON files
-to generate a standalone YAML vars file for omnia.image_builder.
+to generate a standalone YAML vars file for omnia.open_image_builder.
 
 Usage:
     python3 tools/convert_omnia_config.py /opt/omnia/input
@@ -205,7 +205,7 @@ def main():
     print()
     print("Next steps:")
     print(f"  1. Edit {args.output} and add your repos")
-    print(f"  2. ansible-playbook omnia.image_builder.build_{args.arch} -e @{args.output}")
+    print(f"  2. ansible-playbook omnia.open_image_builder.build_{args.arch} -e @{args.output}")
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ ansible-playbook omnia.open_image_builder.build -e @my_image.yml
 
 ## How It Works
 
-The entire build runs inside containers. The host needs `podman` and Ansible.
+The entire build runs inside containers. The host needs podman, uildah, and Ansible.
 That's the full dependency list.
 
 [OpenCHAMI image-thrillhouse](https://github.com/OpenCHAMI/image-thrillhouse)
@@ -132,7 +132,7 @@ compute_images_dict:
 
 Each entry gets its own image-thrillhouse config, layered on top of the shared
 base. One playbook run, one base image, N compute images. Each is a
-self-contained squashfs with its own kernel and initramfs.
+self-contained squashfs. The kernel and initramfs are inherited from the base image — compute images add only their role-specific packages.
 
 ## Air-Gapped Builds
 

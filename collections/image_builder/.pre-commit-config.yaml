@@ -1,5 +1,5 @@
 ---
-# Pre-commit hooks for omnia.image_builder
+# Pre-commit hooks for omnia.open_image_builder
 # Install: pip install pre-commit && pre-commit install
 # Run manually: pre-commit run --all-files
 

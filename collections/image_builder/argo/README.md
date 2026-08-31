@@ -127,7 +127,7 @@ podman run --rm --privileged \
   -v /tmp/image-output:/output:z \
   -v /tmp/image-workspace:/workspace:z \
   ghcr.io/dell/omnia-image-builder:latest \
-  omnia.image_builder.build_x86_64 \
+  omnia.open_image_builder.build_x86_64 \
   -e @/config/image-vars.yml \
   -e output_dir=/output \
   -e work_dir=/workspace

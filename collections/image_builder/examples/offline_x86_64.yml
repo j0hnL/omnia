@@ -6,11 +6,11 @@
 #
 # Usage:
 #   # First run (downloads packages from upstream, then builds):
-#   ansible-playbook omnia.image_builder.build_x86_64 \
+#   ansible-playbook omnia.open_image_builder.build_x86_64 \
 #     -e @examples/offline_x86_64.yml
 #
 #   # Subsequent runs (fully offline — uses cached mirror):
-#   ansible-playbook omnia.image_builder.build_x86_64 \
+#   ansible-playbook omnia.open_image_builder.build_x86_64 \
 #     -e @examples/offline_x86_64.yml
 #   (skip_if_cached=true by default, so it won't try to download again)
 ---

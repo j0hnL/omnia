@@ -17,7 +17,7 @@
 and admin_debug_packages.json. Returns a flat list of package names for base image building."""
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible_collections.omnia.image_builder.plugins.module_utils.build_image.common_functions import (
+from ansible_collections.omnia.open_image_builder.plugins.module_utils.build_image.common_functions import (
     load_json_file,
     is_additional_packages_enabled,
     is_admin_debug_enabled,
