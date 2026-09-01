@@ -172,6 +172,121 @@ The build runs in containers with no host-side state. You can run it in
 CI, version-control the input YAML, and promote images through
 dev/staging/production channels by moving files, not rebuilding.
 
+## Keeping Images Current: CI/CD for OS Images
+
+Building an image once is the easy part. Keeping it current -- security
+patches, kernel updates, driver upgrades, new library versions -- is where
+most HPC sites fall apart. The golden image that was perfect in January has
+47 unpatched CVEs by March. Somebody updates a package on the build server
+and forgets to rebuild the image. A new CUDA driver ships and half the
+fleet gets it manually while the other half doesn't.
+
+This is where CI/CD pipelines stop being a cloud-native luxury and start
+being an operational necessity.
+
+### What the HPC Community Is Doing
+
+The sites that have solved this all converged on the same pattern: store
+the image definition in Git, rebuild automatically on a schedule or on
+commit, validate the result, and promote through deployment channels.
+
+**Freiburg** (bwForCluster NEMO 2, 260 nodes) uses GitLab CI/CD with Packer
+and Ansible. Their images are streamed via DNBD3 from S3 storage. They
+run four deployment channels -- dev, staging, production, and rollback --
+and promote images by updating a pointer file, not by copying the image.
+Instant rollback means pointing back to the previous image hash.
+
+**LANL** (Travis Cotton, CUG 2023) built a layered CI/CD image pipeline
+using buildah and OCI layers. Base layer changes trigger rebuilds of all
+dependent layers. Each layer is versioned independently, so a kernel
+update doesn't force a full rebuild -- only the kernel layer and its
+dependents rebuild. The pipeline guarantees that unchanged layers remain
+bit-for-bit identical.
+
+**HKUST** runs Argo Workflows on a dedicated Kubernetes cluster that shares
+storage with their production Slurm cluster. Image builds produce squashfs
+artifacts that go through container-based validation (package presence,
+toolchain compilation, MPI initialization) before manual bare-metal
+validation on test nodes, then staged production rollout.
+
+### How This Collection Supports CI/CD
+
+The collection ships with production-ready Argo Workflows manifests in the
+`argo/` directory. The `CronWorkflow` rebuilds images nightly at 2 AM:
+
+```yaml
+# argo/cronworkflow.yaml (shipped with the collection)
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: nightly-image-rebuild
+  namespace: image-builder
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Replace
+  workflowSpec:
+    templates:
+      - name: build
+        container:
+          image: ghcr.io/dell/omnia-image-builder:latest
+          args:
+            - |
+              ansible-playbook omnia.open_image_builder.build_x86_64 \
+                -e @/config/image-vars.yml
+          securityContext:
+            privileged: true
+```
+
+The nightly rebuild picks up upstream security patches, kernel updates, and
+new package versions automatically. If a CUDA driver update lands in the
+NVIDIA repo on Tuesday, Wednesday morning's image has it. No human
+intervention. The YAML defining what goes in the image is in Git. The image
+itself is a deterministic function of that YAML plus the repo state at
+build time.
+
+### The Deployment Channel Pattern
+
+The real power of CI/CD for OS images isn't the automated rebuild -- it's
+the promotion pipeline that comes after:
+
+```
+nightly build → dev channel → automated tests → staging → manual gate → production
+```
+
+With squashfs images served over HTTP, a "deployment channel" is just a
+symlink or a pointer file. Promoting an image from staging to production
+means updating one pointer. Rolling back means pointing to the previous
+image. No file copies, no rebuild, instant switchover.
+
+OpenCHAMI's boot service makes this trivial -- change the boot parameter
+URL for a group of nodes and reboot them. They come up on the new image.
+If something's wrong, change the URL back and reboot again. The old image
+is still on the HTTP server.
+
+### Why Not Just Run Ansible Against Live Nodes?
+
+You can. People do. But it doesn't give you the same guarantees:
+
+- **Drift is cumulative.** Ansible converges toward a desired state, but
+  "toward" is not "at." A failed play, a network timeout during a package
+  download, or a reboot in the middle of a run leaves a node in an
+  intermediate state. Multiply that across 2,000 nodes and some fraction
+  are always slightly different from the rest.
+
+- **Immutable images are auditable.** A squashfs has a SHA-256 checksum.
+  Either a node is running the blessed image or it isn't. There's no
+  partial state, no "Ansible ran but skipped three tasks."
+
+- **Rollback is instant.** Rolling back a live Ansible run means running
+  a different playbook and hoping it correctly undoes everything. Rolling
+  back a squashfs means changing a URL and rebooting.
+
+The right hybrid is: build everything into the image at image-build time
+(using Ansible if you want -- the collection uses it internally), then use
+cloud-init or OpenCHAMI's configurator for per-node personalization at
+boot (hostname, IP, Slurm config, site-specific mounts). The image carries
+the software stack. The boot-time config carries the identity.
+
 ## What This Doesn't Do
 
 This collection builds images. It doesn't provision nodes, manage boot
