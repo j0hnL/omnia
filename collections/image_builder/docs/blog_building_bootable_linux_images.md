@@ -62,24 +62,33 @@ Rocky images on Ubuntu, build Fedora images on RHEL, nobody cares.
 ## What It Actually Costs You
 
 Real numbers from a Dell PowerEdge (2x Xeon Gold 6330, NVMe, RHEL 10.2).
-All times wall-clock, repos over network, not cached.
+Install times below exclude package download -- they reflect what you'd see
+with a local repo mirror. Total wall-clock times (with network download)
+are shown for reference.
 
-| Image | Time | Squashfs | Packages |
-|---|---|---|---|
-| Rocky 10 base | 6m 48s | 865 MB | 436 |
-| HPC Scientific | 8m 23s | 1.1 GB | 696 |
-| GPU Developer (CUDA) | 18m 25s | 5.5 GB | 761 |
-| Rocky 10 aarch64 (cross) | 21m 23s | 724 MB | 432 |
-| Wolfi base | 6m 10s | 39 MB | 15 |
+| Image | Install | Dracut | Squashfs | Total (w/ download) | Size | Packages |
+|---|---|---|---|---|---|---|
+| Rocky 10 base | ~2m | 1m 0s | ~1m | 6m 48s | 865 MB | 436 |
+| HPC Scientific | ~3m | 1m 5s | ~1m 20s | 8m 23s | 1.1 GB | 696 |
+| GPU Developer (CUDA) | ~4m | 1m 8s | ~3m 40s | 18m 25s | 5.5 GB | 761 |
+| Rocky 10 aarch64 (cross) | ~8m | ~6m | ~1m | 21m 23s | 724 MB | 432 |
+| Wolfi base | -- | -- | -- | 6m 10s | 39 MB | 15 |
 
-The interesting number is the HPC Scientific image: 1.1 GB for a complete
+> **Note on timings:** DNF combines download and install into one step, so
+> we can't cleanly separate them from a single run. The "Install" column
+> estimates the local-mirror case by subtracting observed download overhead.
+> The "Total (w/ download)" column is the measured wall-clock time with
+> packages fetched over the network. With the `repo_mirror` role serving
+> packages from a local nginx container, download time drops to near-zero.
+
+The HPC Scientific image is the interesting one: 1.1 GB for a complete
 compute node with gcc, gfortran, OpenMPI, FFTW, HDF5, NetCDF, LAPACK, UCX,
-RDMA, Slurm, and Lmod. That's everything you need to build and run WRF,
-GROMACS, or LAMMPS. Eight minutes from nothing to a bootable squashfs.
+RDMA, Slurm, and Lmod. With a local mirror, that builds in roughly five
+minutes.
 
-The GPU image is 5.5 GB because CUDA libraries are ~4 GB by themselves. Build
-time is dominated by downloading NVIDIA packages. If you cache the CUDA repo
-locally, expect ~10 minutes instead of 18.
+The GPU image is 5.5 GB because CUDA libraries are ~4 GB. Network download
+dominates -- 13 minutes of the 18 minute build is DNF downloading and
+installing packages. With a local CUDA mirror, this drops to under 10 minutes.
 
 Wolfi at 39 MB is a different animal entirely -- minimal container base, no
 kernel, no compilers. Wolfi's package ecosystem targets cloud-native workloads,
