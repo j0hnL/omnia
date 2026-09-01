@@ -123,12 +123,13 @@ from a nuisance into a real engineering problem:
 
 **1. GPU driver versioning became a fleet-wide correctness issue.**
 
-A 2024 GPU training job that spans 256 nodes will silently produce wrong
-results if two nodes have different CUDA driver versions. Not crash -- wrong
-results. Configuration drift in the GPU stack isn't an operational annoyance;
-it's a correctness bug. The only reliable defense is immutable images: every
-node boots from the same squashfs, with the same driver version, verified
-by checksum. You don't converge to a desired state. You boot into it.
+A GPU training job that spans 256 nodes will fail in unpredictable ways if
+two nodes have different CUDA driver versions -- NCCL hangs, CUDA API
+mismatches, jobs that crash on some nodes and not others. Configuration
+drift in the GPU stack turns a routine training run into a debugging
+session. The reliable defense is immutable images: every node boots from
+the same squashfs, with the same driver version, verified by checksum.
+You don't converge to a desired state. You boot into it.
 
 **2. HPC clusters became heterogeneous.**
 
@@ -157,10 +158,11 @@ bake everything into the image at build time. Nodes boot into a read-only
 squashfs with a RAM-backed overlay for runtime state. Updates mean building
 a new image and rebooting, not patching in place.
 
-This is exactly what ORNL's Anchor project does, what LANL does with
-OpenCHAMI at Badger and Venado, what Freiburg does with their CI/CD
-pipeline for bwForCluster NEMO 2, and what Warewulf has been doing for
-twenty years with its VNFS images.
+This is exactly what ORNL's Anchor project does (buildah + squashfs +
+dracut module), what LANL does with OpenCHAMI on the 640-node Badger
+cluster, what Freiburg does with their CI/CD pipeline for bwForCluster
+NEMO 2, and what Warewulf has been doing for over twenty years with its
+VNFS images.
 
 `omnia.open_image_builder` is built for this pattern. The output is a
 squashfs + kernel + initramfs, ready for PXE boot into a stateless,
@@ -194,7 +196,7 @@ ansible-playbook omnia.open_image_builder.build \
   -e omnia_integration=true \
   -e input_project_dir=/opt/omnia/input
 
-# Point OpenCHAMI's boot service at the output
+# Point OpenCHAMI's boot service at the output (syntax is illustrative)
 ochami boot set \
   --kernel http://boot-server/images/base/vmlinuz \
   --initrd http://boot-server/images/base/initramfs.img \
