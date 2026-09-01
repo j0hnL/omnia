@@ -797,22 +797,60 @@ for ready-to-use configurations.
 
 ## Known Limitations
 
-### Rootless podman
+### Root vs. rootless builds
 
-The build role runs the image-thrillhouse container with `--user root` and
-`--privileged` to ensure full access to build operations. Running with
-`sudo` is recommended for reliable builds.
+**Rootless builds work.** The entire build pipeline runs successfully under
+rootless podman — no `sudo` required. The `--privileged` and `--user root`
+flags in the podman command operate within a user namespace, giving the
+container full capabilities inside its own namespace without requiring real
+root on the host. Tested on RHEL 10.2 with rootless podman 5.8.2.
 
-- **SELinux**: The build role passes `--security-opt label=disable` to podman.
-  If QEMU binfmt_misc is registered for cross-builds, SELinux may block the
-  QEMU interpreter. Set `setenforce 0` during cross-builds, or configure a
-  targeted SELinux boolean for the QEMU binary.
+```bash
+# Rootless build — no sudo needed
+ansible-playbook omnia.open_image_builder.build -e @examples/rocky_x86_64.yml \
+  -e work_dir=$HOME/image-builder -e output_dir=$HOME/image-builder/output
+```
+
+**What does NOT need root:**
+
+| Operation | Rootless? | Notes |
+|---|---|---|
+| Image builds (x86_64) | Yes | podman + image-thrillhouse in user namespace |
+| Config generation | Yes | Pure Ansible templating |
+| Squashfs output | Yes | Written to user-owned bind-mounted directories |
+| PXE artifact export | Yes | buildah mount in user namespace |
+| S3/registry publishing | Yes | Network operations only |
+| Pulling image-thrillhouse container | Yes | Rootless podman pull |
+
+**What DOES need root (and how to avoid it):**
+
+| Operation | Why root? | Workaround |
+|---|---|---|
+| QEMU binfmt_misc registration | Writes to `/proc/sys/fs/binfmt_misc` | Ask an admin to run it once: `sudo podman run --rm --privileged multiarch/qemu-user-static --reset -p yes`. Registration persists across reboots on most systems. |
+| CA certificate trust update | Writes to system `/etc/pki/ca-trust/` | Not needed unless repos use self-signed TLS certs. Set `ca_cert_path: ""` to skip. |
+
+**Rootless build tips:**
+
+- Set `work_dir` and `output_dir` to directories you own (e.g. `$HOME/image-builder`).
+  The defaults (`/var/lib/image-builder`) are root-owned.
+- Cross-architecture builds work rootless **if** QEMU binfmt_misc is already
+  registered (check: `ls /proc/sys/fs/binfmt_misc/qemu-aarch64`).
+
+### SELinux
+
+The build role passes `--security-opt label=disable` to podman to prevent
+SELinux from blocking container operations on bind-mounted host directories.
+
+For cross-builds, SELinux may block the QEMU user-static interpreter. If
+cross-builds fail with permission errors, either:
+- Set `setenforce 0` during the build, or
+- Add a targeted SELinux boolean for the QEMU binary
 
 ### Cross-architecture builds (aarch64 on x86_64)
 
 Cross-builds require QEMU binfmt_misc registration and a working QEMU
 user-static binary on the host. The `setup_qemu` task handles registration
-via the `multiarch/qemu-user-static` container.
+via the `multiarch/qemu-user-static` container (requires root — see above).
 
 RPM-based cross-builds use `from: scratch` with `arch=<target>` and
 `ignorearch=True` set in DNF config to install target-architecture packages.
@@ -821,13 +859,6 @@ speed.
 
 Parent-image cross-builds (e.g. Wolfi aarch64) require `--manifest` + `--arch`
 mode so image-thrillhouse pulls the correct platform variant of the base image.
-
-### Squashfs output in container mode
-
-The build role runs image-thrillhouse with `--user root` to ensure the
-container process can create output directories and write squashfs files.
-The work directory and output directory are bind-mounted from the host into
-the container.
 
 ## Contributing
 
