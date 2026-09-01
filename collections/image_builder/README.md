@@ -24,9 +24,11 @@ ansible-galaxy collection install omnia-open_image_builder-1.0.0.tar.gz
 - **Ansible** >= 2.14
 - **podman**
 - **buildah**
+- **squashfs-tools** *(provides `unsquashfs` for PXE artifact extraction)*
 - **image-thrillhouse** *(optional — auto-pulled as a container if not installed)*
 
-That's it. Everything else runs in containers automatically.
+That's it. Everything else runs in containers automatically. No root required
+for x86_64 builds — see [Known Limitations](#known-limitations) for details.
 
 ### Your first image in 3 steps
 

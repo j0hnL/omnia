@@ -1,6 +1,6 @@
 # Building Bootable Linux Images in One Command
 
-*An Ansible collection that turns a YAML file into a PXE-bootable squashfs. Seven distros, two architectures, zero host dependencies beyond podman.*
+*An Ansible collection that turns a YAML file into a PXE-bootable squashfs. Seven distros, two architectures, no root required.*
 
 ---
 
@@ -36,8 +36,8 @@ ansible-playbook omnia.open_image_builder.build -e @my_image.yml
 
 ## How It Works
 
-The entire build runs inside containers. The host needs podman, uildah, and Ansible.
-That's the full dependency list.
+The entire build runs inside containers. The host needs `podman`, `buildah`,
+`squashfs-tools`, and Ansible. No root required -- rootless podman works.
 
 [OpenCHAMI image-thrillhouse](https://github.com/OpenCHAMI/image-thrillhouse)
 does the heavy lifting — it wraps `buildah` with package manager orchestration
@@ -143,7 +143,8 @@ compute_images_dict:
 
 Each entry gets its own image-thrillhouse config, layered on top of the shared
 base. One playbook run, one base image, N compute images. Each is a
-self-contained squashfs with its own kernel and initramfs.
+self-contained squashfs. The kernel and initramfs are inherited from the base
+image -- compute images add only their role-specific packages.
 
 ## Air-Gapped Builds
 
@@ -168,6 +169,20 @@ containerized builds, and cross-architecture ARM — no host-installed `dnf`,
 If you don't run Omnia, the collection works standalone. No dependency on
 Omnia's infrastructure, software catalog, or operational model. Just an
 Ansible collection you install from Galaxy.
+
+## No Root Required
+
+The entire pipeline runs under rootless podman. The `--privileged` and
+`--user root` flags in the podman invocation operate within a user namespace
+-- full capabilities inside the container, zero elevated privileges on the
+host. We tested this end-to-end on RHEL 10.2: a regular user builds a Rocky 10
+image in 6 minutes, gets a squashfs, kernel, initramfs, and manifest with
+verified checksums. No sudo anywhere in the chain.
+
+The one exception is QEMU binfmt_misc registration for cross-architecture
+builds, which writes to `/proc/sys/fs/binfmt_misc` and requires real root.
+But that's a one-time setup -- ask your admin to run it once and it persists
+across reboots.
 
 ## What's Left
 
