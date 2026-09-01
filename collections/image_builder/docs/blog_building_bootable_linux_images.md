@@ -36,7 +36,7 @@ ansible-playbook omnia.open_image_builder.build -e @my_image.yml
 
 ## How It Works
 
-The entire build runs inside containers. The host needs podman, buildah, and Ansible.
+The entire build runs inside containers. The host needs podman, uildah, and Ansible.
 That's the full dependency list.
 
 [OpenCHAMI image-thrillhouse](https://github.com/OpenCHAMI/image-thrillhouse)
@@ -61,19 +61,30 @@ Rocky images on Ubuntu, build Fedora images on RHEL, nobody cares.
 
 ## What It Actually Costs You
 
-Real numbers from a Dell PowerEdge (2x Xeon Gold 6330, NVMe, RHEL 10.2):
+Real numbers from a Dell PowerEdge (2x Xeon Gold 6330, NVMe, RHEL 10.2).
+All times wall-clock, repos over network, not cached.
 
-| Build | Time | Squashfs | Packages |
+| Image | Time | Squashfs | Packages |
 |---|---|---|---|
-| Rocky 10 x86_64 | 6m 48s | 865 MB | 436 |
-| Wolfi x86_64 | 6m 10s | 39 MB | 15 |
+| Rocky 10 base | 6m 48s | 865 MB | 436 |
+| HPC Scientific | 8m 23s | 1.1 GB | 696 |
+| GPU Developer (CUDA) | 18m 25s | 5.5 GB | 761 |
 | Rocky 10 aarch64 (cross) | 21m 23s | 724 MB | 432 |
+| Wolfi base | 6m 10s | 39 MB | 15 |
 
-The Wolfi number is not a typo. 39 MB for a usable Linux image. Chainguard
-built Wolfi with granular packages and no legacy cruft — you get exactly what
-you install and nothing else. It won't PXE-boot bare metal (no kernel), but
-for containerized HPC workloads where image transfer time matters, it's hard
-to argue with 39 MB vs 865 MB.
+The interesting number is the HPC Scientific image: 1.1 GB for a complete
+compute node with gcc, gfortran, OpenMPI, FFTW, HDF5, NetCDF, LAPACK, UCX,
+RDMA, Slurm, and Lmod. That's everything you need to build and run WRF,
+GROMACS, or LAMMPS. Eight minutes from nothing to a bootable squashfs.
+
+The GPU image is 5.5 GB because CUDA libraries are ~4 GB by themselves. Build
+time is dominated by downloading NVIDIA packages. If you cache the CUDA repo
+locally, expect ~10 minutes instead of 18.
+
+Wolfi at 39 MB is a different animal entirely -- minimal container base, no
+kernel, no compilers. Wolfi's package ecosystem targets cloud-native workloads,
+not Fortran and InfiniBand. Good for inference endpoints and monitoring services
+running alongside the cluster, not for the nodes running MPI jobs.
 
 ## Cross-Architecture Builds Without ARM Hardware
 
@@ -132,7 +143,7 @@ compute_images_dict:
 
 Each entry gets its own image-thrillhouse config, layered on top of the shared
 base. One playbook run, one base image, N compute images. Each is a
-self-contained squashfs. The kernel and initramfs are inherited from the base image — compute images add only their role-specific packages.
+self-contained squashfs with its own kernel and initramfs.
 
 ## Air-Gapped Builds
 

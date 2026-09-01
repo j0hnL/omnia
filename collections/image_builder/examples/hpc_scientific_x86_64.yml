@@ -1,0 +1,102 @@
+# Rocky Linux 10 x86_64 - HPC scientific computing image
+#
+# Full compiler + MPI + scientific library stack suitable for
+# building and running WRF, GROMACS, NAMD, LAMMPS, and similar codes.
+#
+# Build:
+#   ansible-playbook omnia.open_image_builder.build -e @examples/hpc_scientific_x86_64.yml
+---
+os_family: rocky
+os_version: "10.0"
+target_arch: x86_64
+
+repos:
+  - name: baseos
+    base_url: https://dl.rockylinux.org/pub/rocky/10/BaseOS/x86_64/os
+    gpg: ""
+  - name: appstream
+    base_url: https://dl.rockylinux.org/pub/rocky/10/AppStream/x86_64/os
+    gpg: ""
+  - name: crb
+    base_url: https://dl.rockylinux.org/pub/rocky/10/CRB/x86_64/os
+    gpg: ""
+  - name: epel
+    base_url: https://dl.fedoraproject.org/pub/epel/10/Everything/x86_64
+    gpg: ""
+
+base_image_packages:
+  # Boot
+  - kernel
+  - dracut
+  - dracut-live
+  - dracut-network
+  # Networking
+  - NetworkManager
+  - openssh-server
+  - openssh-clients
+  - chrony
+  - sudo
+  - iproute
+  - iputils
+  # Compilers
+  - gcc
+  - gcc-c++
+  - gcc-gfortran
+  # Build tools
+  - make
+  - cmake
+  - automake
+  - autoconf
+  - libtool
+  - pkgconf
+  - git
+  # MPI
+  - openmpi
+  - openmpi-devel
+  # Math / linear algebra
+  - lapack
+  - lapack-devel
+  - blas
+  - blas-devel
+  # FFT (GROMACS, NAMD, WRF)
+  - fftw
+  - fftw-devel
+  - fftw-libs
+  # Scientific I/O (WRF, climate codes)
+  - hdf5
+  - hdf5-devel
+  - netcdf
+  - netcdf-devel
+  - netcdf-fortran
+  - netcdf-fortran-devel
+  - zlib-devel
+  # HPC runtime
+  - hwloc
+  - hwloc-devel
+  - numactl
+  - numactl-devel
+  - ucx
+  - ucx-devel
+  - pmix
+  - pmix-devel
+  # RDMA / InfiniBand
+  - rdma-core
+  - rdma-core-devel
+  - libibverbs
+  - libibverbs-utils
+  - librdmacm
+  - librdmacm-utils
+  # Slurm compute node
+  - slurm-slurmd
+  - slurm-pam_slurm
+  - munge
+  # Environment modules
+  - Lmod
+  # Misc
+  - nfs-utils
+  - wget
+  - tar
+  - bzip2
+  - xz
+  - strace
+  - perf

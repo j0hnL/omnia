@@ -119,9 +119,9 @@ and Wolfi.
 | Tool | What it does | What it doesn't do |
 |---|---|---|
 | **This collection** | Declarative YAML to squashfs, any host OS, 7 distros, ARM cross-build, offline, CI-ready | Not a provisioner — doesn't manage PXE servers, DHCP, or node lifecycle |
-| **Warewulf** | Full provisioning stack with OCI-based images | Image delivery tied to Warewulf provisioning stack |
+| **Warewulf** | Full provisioning stack with image builds | Tightly coupled — can't use the image builder without the rest of Warewulf |
 | **lorax / livemedia-creator** | Official Fedora/RHEL image tooling | Fedora/RHEL only, must run on a matching host OS |
-| **live-build** | Debian/Ubuntu live images | Debian/Ubuntu only, no RPM-based distros |
+| **live-build** | Debian/Ubuntu live images | Debian only |
 | **Packer** | VM images (QEMU, VMware, cloud) | VM-oriented — not designed for bare-metal PXE squashfs |
 | **Foreman / Cobbler** | Full lifecycle provisioning | Heavy infrastructure (databases, services, web UI) |
 | **Shell scripts** | Whatever you write | Fragile, untestable, non-portable, undocumented |
@@ -149,11 +149,13 @@ and installs packages via `apk add` commands.
 > supply-chain security. It uses the `apk` package format (like Alpine, but
 > glibc-based and not binary-compatible with Alpine), builds every package
 > from source with build-time SBOMs, and is designed for minimal attack
-> surface. Wolfi images are dramatically smaller than traditional distros
-> (~39 MB vs ~870 MB for an EL base image) because packages are granular
-> and independent — you install only what you need. This makes Wolfi a
-> strong choice for lightweight, security-hardened compute node images
-> where CVE exposure and image transfer times matter.
+> surface. A minimal Wolfi image is ~39 MB vs ~870 MB for an EL base image,
+> but this is not an apples-to-apples comparison — the EL image includes
+> kernel, dracut, and development tools that Wolfi doesn't have. Wolfi's
+> package ecosystem targets cloud-native containers, not HPC workloads
+> (no MPI, RDMA, or Fortran compilers). Wolfi is a good fit for lightweight
+> containerized services running alongside HPC clusters (inference endpoints,
+> monitoring, data pipelines), not for bare-metal compute nodes.
 
 ## Examples by Use Case
 
@@ -224,7 +226,7 @@ compute_images_dict:
       - munge
       - hwloc
       - environment-modules
-      - Lmod
+      - lmod
   gpu_node_x86_64:
     functional_group: gpu_node_x86_64
     packages:
@@ -237,10 +239,6 @@ compute_images_dict:
       - nvidia-driver
       - cuda-toolkit
 ```
-
-> **Note**: The `nvidia-driver` and `cuda-toolkit` packages require adding
-> [NVIDIA's CUDA repo](https://developer.nvidia.com/cuda-downloads) to the
-> `repos` list. They are not available in BaseOS, AppStream, or EPEL.
 
 ```bash
 ansible-playbook omnia.open_image_builder.build -e @slurm_hpc_cluster.yml
@@ -621,22 +619,34 @@ podman 5.8.2 / buildah 1.43.2.
 
 #### x86_64 image builds (measured)
 
-| OS | Total build time | Squashfs size | Notes |
-|---|---|---|---|
-| **Rocky 10** | **6m 48s** | 865 MB | install 4m 39s, dracut 1m 0s |
-| **AlmaLinux 10** | **5m 55s** | 884 MB | install 3m 48s, dracut 60s |
-| **Fedora 44** | **5m 11s** | 874 MB | install 4m 01s |
-| **Wolfi** | **6m 10s** | 39 MB | apk add, no kernel/dracut |
+| Image | Total build time | Squashfs size | Packages | Notes |
+|---|---|---|---|---|
+| **Rocky 10 base** | **6m 48s** | 865 MB | 436 | Minimal Install + Dev Tools |
+| **AlmaLinux 10 base** | **5m 55s** | 884 MB | ~420 | Minimal Install + Dev Tools |
+| **Fedora 44 base** | **5m 11s** | 874 MB | ~400 | Minimal Install + Dev Tools |
+| **HPC Scientific** | **8m 23s** | 1.1 GB | 696 | + compilers, MPI, FFTW, HDF5, NetCDF, RDMA, Slurm |
+| **GPU Developer** | **18m 25s** | 5.5 GB | 761 | + CUDA toolkit, cuDNN, NCCL, nvidia-driver |
+| **Wolfi base** | **6m 10s** | 39 MB | 15 | apk add, no kernel/dracut |
 
-**RPM-based builds** (Rocky, AlmaLinux, Fedora) install 10 base packages plus
-"Minimal Install" and "Development Tools" groups (~300-420 total packages).
-Times are wall-clock from `image-thrillhouse build` start to finish and include
-package download, install, dracut initramfs generation, buildah commit, and
-squashfs export. Repos were accessed over network (not cached).
+**Base images** install ~10 base packages plus "Minimal Install" and
+"Development Tools" groups. Times are wall-clock from `image-thrillhouse build`
+start to finish and include package download, install, dracut initramfs
+generation, buildah commit, and squashfs export. Repos accessed over network.
 
-**Wolfi builds** start from a parent image (`cgr.dev/chainguard/wolfi-base`)
-and install 15 packages via `apk add`. The squashfs is much smaller (39 MB vs
-~870 MB) because Wolfi packages are granular and the base image is minimal.
+**HPC Scientific** adds gcc/gfortran, OpenMPI, FFTW, HDF5, NetCDF, LAPACK/BLAS,
+UCX, PMIX, RDMA, Slurm, and Lmod on top of the base image packages. This is a
+build-and-run environment for codes like WRF, GROMACS, NAMD, and LAMMPS. The
+1.1 GB squashfs is what a real HPC compute node image looks like.
+
+**GPU Developer** adds the full NVIDIA stack (driver, CUDA toolkit, cuDNN, NCCL)
+on top of compilers, MPI, and RDMA. The 5.5 GB squashfs is dominated by CUDA
+libraries (~4 GB). Build time is 18 minutes due to downloading ~5 GB of NVIDIA
+packages over the network. See `examples/gpu_developer_x86_64.yml` — requires
+adding the NVIDIA CUDA repo.
+
+**Wolfi** starts from a parent image (`cgr.dev/chainguard/wolfi-base`) and
+installs 15 packages via `apk add`. The 39 MB squashfs reflects a minimal
+container base — not a comparable workload to the EL images.
 
 > **Fedora note:** Fedora's metalink redirection does not resolve inside build
 > containers. Use a direct mirror URL instead, e.g.
@@ -660,9 +670,10 @@ The `repo_mirror` role syncs upstream RPMs to a local nginx-served mirror. First
 run requires network access. Subsequent rebuilds use only the cached local mirror
 with zero network access.
 
-**Disk space**: Each build uses ~3 GB (installroot + squashfs). The offline
-mirror adds ~9 GB for EL repos. Ensure at least **15 GB free** for direct builds
-or **25 GB free** for offline builds.
+**Disk space**: Base and HPC builds use ~3 GB (installroot + squashfs). GPU
+builds with CUDA need ~12 GB (installroot + 5.5 GB squashfs). The offline
+mirror adds ~9 GB for EL repos. Ensure at least **15 GB free** for base builds,
+**25 GB free** for GPU builds, or **35 GB free** for offline GPU builds.
 
 ## Collection Structure
 
@@ -829,7 +840,7 @@ and follows its open-source values.
 
 ```bash
 cd collections/image_builder
-make test      # run the 286-test pytest suite
+make test      # run the 284-test pytest suite
 make lint      # yamllint + ansible-lint
 make help      # see all developer tasks
 ```

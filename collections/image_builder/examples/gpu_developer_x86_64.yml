@@ -1,0 +1,80 @@
+# Rocky Linux 10 x86_64 - NVIDIA GPU developer stack
+#
+# Full CUDA toolkit + drivers + cuDNN + NCCL for AI/ML and HPC GPU workloads.
+# Includes compilers, MPI, and RDMA for multi-node GPU training.
+#
+# Build:
+#   ansible-playbook omnia.open_image_builder.build -e @examples/gpu_developer_x86_64.yml
+---
+os_family: rocky
+os_version: "10.0"
+target_arch: x86_64
+
+repos:
+  - name: baseos
+    base_url: https://dl.rockylinux.org/pub/rocky/10/BaseOS/x86_64/os
+    gpg: ""
+  - name: appstream
+    base_url: https://dl.rockylinux.org/pub/rocky/10/AppStream/x86_64/os
+    gpg: ""
+  - name: crb
+    base_url: https://dl.rockylinux.org/pub/rocky/10/CRB/x86_64/os
+    gpg: ""
+  - name: epel
+    base_url: https://dl.fedoraproject.org/pub/epel/10/Everything/x86_64
+    gpg: ""
+  - name: cuda-rhel10
+    base_url: https://developer.download.nvidia.com/compute/cuda/repos/rhel10/x86_64
+    gpg: ""
+
+base_image_packages:
+  # Boot
+  - kernel
+  - dracut
+  - dracut-live
+  - dracut-network
+  # Networking
+  - NetworkManager
+  - openssh-server
+  - openssh-clients
+  - chrony
+  - sudo
+  - iproute
+  - iputils
+  # Compilers
+  - gcc
+  - gcc-c++
+  - gcc-gfortran
+  # Build tools
+  - make
+  - cmake
+  - git
+  - pkgconf
+  # MPI
+  - openmpi
+  - openmpi-devel
+  # HPC runtime
+  - hwloc
+  - numactl
+  - ucx
+  - ucx-devel
+  # RDMA / InfiniBand
+  - rdma-core
+  - libibverbs
+  - librdmacm
+  # NVIDIA GPU stack
+  - nvidia-driver
+  - cuda-toolkit
+  - libcudnn9-cuda-13
+  - libcudnn9-devel-cuda-13
+  - libnccl
+  - libnccl-devel
+  # Slurm compute node
+  - slurm-slurmd
+  - munge
+  # Misc
+  - nfs-utils
+  - wget
+  - tar
+  - pciutils
+  - dkms
