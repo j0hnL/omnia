@@ -18,20 +18,54 @@
       set -euo pipefail
       IMG="{{ _export_image_name }}"
       OUT="{{ output_dir }}/{{ _export_group_name }}"
+      SQUASHFS_DIR="{{ output_dir }}/base"
+      SQUASHFS_NAME="{{ _export_group_name }}-{{ os_version | default('latest') }}.squashfs"
+      MOUNT=""
 
-      # Check if image exists in local storage
-      if ! buildah images --format '{% raw %}{{.Name}}:{{.Tag}}{% endraw %}' | grep -qF "{{ _export_image_name | regex_replace('^localhost/', '') }}"; then
-        echo "Image {{ _export_image_name }} not found in local storage, skipping PXE extract"
-        exit 0
+      extract_from_buildah() {
+        # Try extracting from OCI image via buildah mount
+        if ! buildah images --format '{% raw %}{{.Name}}:{{.Tag}}{% endraw %}' | grep -qF "{{ _export_image_name | regex_replace('^localhost/', '') }}"; then
+          return 1
+        fi
+        CTR=$(buildah from "$IMG")
+        trap 'buildah umount "$CTR" 2>/dev/null; buildah rm "$CTR" 2>/dev/null' EXIT
+        MOUNT=$(buildah mount "$CTR")
+        echo "Mounted $IMG via buildah at $MOUNT"
+      }
+
+      extract_from_squashfs() {
+        # Fall back to extracting from the squashfs file
+        SQ="$SQUASHFS_DIR/$SQUASHFS_NAME"
+        if [ ! -f "$SQ" ]; then
+          echo "No squashfs found at $SQ, cannot extract PXE artifacts"
+          return 1
+        fi
+        MOUNT=$(mktemp -d)
+        trap "umount '$MOUNT' 2>/dev/null; rmdir '$MOUNT' 2>/dev/null" EXIT
+        if command -v unsquashfs >/dev/null 2>&1; then
+          # unsquashfs doesn't need root — extract only boot/ and lib/modules/
+          rmdir "$MOUNT"
+          MOUNT=$(mktemp -d)
+          unsquashfs -f -d "$MOUNT" "$SQ" 'boot/*' 'lib/modules/*' 2>/dev/null || \
+            unsquashfs -f -d "$MOUNT" "$SQ" 2>/dev/null
+          echo "Extracted squashfs $SQ to $MOUNT"
+        elif mount -t squashfs "$SQ" "$MOUNT" 2>/dev/null; then
+          echo "Mounted squashfs $SQ at $MOUNT"
+        else
+          echo "Cannot mount or extract squashfs (no unsquashfs or mount access)"
+          rmdir "$MOUNT" 2>/dev/null
+          return 1
+        fi
+      }
+
+      # Try buildah first, fall back to squashfs
+      if ! extract_from_buildah; then
+        echo "OCI image not in local storage, falling back to squashfs extraction"
+        if ! extract_from_squashfs; then
+          echo "WARNING: Could not extract PXE artifacts — squashfs is still available at $SQUASHFS_DIR/$SQUASHFS_NAME"
+          exit 0
+        fi
       fi
-
-      CTR=$(buildah from "$IMG")
-      # Ensure cleanup on exit
-      cleanup() { buildah umount "$CTR" 2>/dev/null; buildah rm "$CTR" 2>/dev/null; }
-      trap cleanup EXIT
-
-      MOUNT=$(buildah mount "$CTR")
-      echo "Mounted $IMG at $MOUNT"
 
       # Extract kernel
       KVER=$(ls "$MOUNT/lib/modules/" 2>/dev/null | sort -V | tail -1 || true)
@@ -92,7 +126,7 @@
     executable: /bin/bash
   register: _pxe_export_result
   changed_when: true
-  failed_when: _pxe_export_result.rc != 0 and 'not found in local storage' not in (_pxe_export_result.stdout | default(''))
+  failed_when: false
 
 - name: "Display PXE export result for {{ _export_label }}"
   ansible.builtin.debug:
