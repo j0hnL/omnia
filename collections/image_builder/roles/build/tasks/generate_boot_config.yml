@@ -1,0 +1,75 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Generate OpenCHAMI boot-service compatible YAML for each built image.
+# Produces boot-params.yaml and register-boot.sh in the output directory.
+---
+
+- name: Generate OpenCHAMI boot configs for each image
+  when: openchami_enabled | default(false) | bool
+  block:
+    - name: Validate OpenCHAMI configuration
+      ansible.builtin.assert:
+        that:
+          - openchami_boot_server | default('') | length > 0
+        fail_msg: >
+          openchami_enabled is true but openchami_boot_server is not set.
+          Set openchami_boot_server to your S3 endpoint URL
+          (e.g. http://172.16.0.254:9000).
+
+    - name: Generate boot-params.yaml for each image
+      ansible.builtin.template:
+        src: boot-params.yaml.j2
+        dest: "{{ output_dir }}/{{ item.name }}/{{ item.name }}-boot-params.yaml"
+        mode: "0644"
+      loop: "{{ _manifest.configs }}"
+      loop_control:
+        label: "{{ item.name }}"
+      vars:
+        _bp_image_name: "{{ item.name }}"
+        _bp_s3_base: "{{ openchami_boot_server }}/{{ openchami_boot_bucket }}"
+        _bp_channel: "{{ openchami_channel }}"
+        _bp_kernel_url: "{{ _bp_s3_base }}/efi-images/{{ _bp_channel }}/{{ item.name }}/vmlinuz"
+        _bp_initrd_url: "{{ _bp_s3_base }}/efi-images/{{ _bp_channel }}/{{ item.name }}/initramfs.img"
+        _bp_rootfs_url: "{{ _bp_s3_base }}/{{ _bp_channel }}/{{ item.name }}/rootfs"
+        _bp_params: >-
+          {{ openchami_boot_params }}
+          root=live:{{ _bp_rootfs_url }}
+          {% if openchami_cloud_init_url | default('') | length > 0 %}
+          ochami_ci_url={{ openchami_cloud_init_url }}
+          {% endif %}
+          {% if openchami_cloud_init_url_secure | default('') | length > 0 %}
+          ochami_ci_url_secure={{ openchami_cloud_init_url_secure }}
+          {% endif %}
+
+    - name: Generate register-boot.sh for each image
+      ansible.builtin.template:
+        src: register-boot.sh.j2
+        dest: "{{ output_dir }}/{{ item.name }}/register-boot.sh"
+        mode: "0755"
+      loop: "{{ _manifest.configs }}"
+      loop_control:
+        label: "{{ item.name }}"
+      vars:
+        _bp_image_name: "{{ item.name }}"
+        _bp_s3_base: "{{ openchami_boot_server }}/{{ openchami_boot_bucket }}"
+        _bp_channel: "{{ openchami_channel }}"
+        _bp_kernel_url: "{{ _bp_s3_base }}/efi-images/{{ _bp_channel }}/{{ item.name }}/vmlinuz"
+        _bp_initrd_url: "{{ _bp_s3_base }}/efi-images/{{ _bp_channel }}/{{ item.name }}/initramfs.img"
+        _bp_rootfs_url: "{{ _bp_s3_base }}/{{ _bp_channel }}/{{ item.name }}/rootfs"
+        _bp_params: >-
+          {{ openchami_boot_params }}
+          root=live:{{ _bp_rootfs_url }}
+          {% if openchami_cloud_init_url | default('') | length > 0 %}
+          ochami_ci_url={{ openchami_cloud_init_url }}
+          {% endif %}
+          {% if openchami_cloud_init_url_secure | default('') | length > 0 %}
+          ochami_ci_url_secure={{ openchami_cloud_init_url_secure }}
+          {% endif %}
+
+    - name: Display OpenCHAMI boot config locations
+      ansible.builtin.debug:
+        msg:
+          - "OpenCHAMI boot configs generated:"
+          - "{% for item in _manifest.configs %}  {{ output_dir }}/{{ item.name }}/{{ item.name }}-boot-params.yaml{% endfor %}"
+          - "Register with: ./register-boot.sh (in each image output directory)"

@@ -1,0 +1,82 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Upload PXE artifacts (kernel, initramfs) to S3 for OpenCHAMI boot-service.
+# image-thrillhouse handles squashfs upload via its publish config.
+# This task uploads the kernel and initramfs that we extract separately.
+---
+
+- name: Upload PXE artifacts to S3
+  when:
+    - openchami_enabled | default(false) | bool
+    - publish_s3 | default(false) | bool
+    - openchami_boot_server | default('') | length > 0
+  block:
+    - name: Upload PXE artifacts for each image
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          IMG_NAME="{{ item.name }}"
+          S3_ENDPOINT="{{ openchami_boot_server }}"
+          S3_BUCKET="{{ openchami_boot_bucket }}"
+          CHANNEL="{{ openchami_channel }}"
+          OUT="{{ output_dir }}/{{ item.name }}"
+
+          # Check if artifacts exist
+          if [ ! -f "$OUT/vmlinuz" ] || [ ! -f "$OUT/initramfs.img" ]; then
+            echo "PXE artifacts not found in $OUT, skipping S3 upload"
+            exit 0
+          fi
+
+          S3_PATH="s3://${S3_BUCKET}/efi-images/${CHANNEL}/${IMG_NAME}"
+
+          echo "Uploading PXE artifacts to ${S3_PATH}/"
+
+          # Upload kernel
+          s3cmd put "$OUT/vmlinuz" "${S3_PATH}/vmlinuz" \
+            --host="${S3_ENDPOINT##http*://}" \
+            --host-bucket="${S3_ENDPOINT##http*://}" \
+            --no-ssl 2>&1 || \
+          aws s3 cp "$OUT/vmlinuz" "${S3_PATH}/vmlinuz" \
+            --endpoint-url "$S3_ENDPOINT" 2>&1
+
+          # Upload initramfs
+          s3cmd put "$OUT/initramfs.img" "${S3_PATH}/initramfs.img" \
+            --host="${S3_ENDPOINT##http*://}" \
+            --host-bucket="${S3_ENDPOINT##http*://}" \
+            --no-ssl 2>&1 || \
+          aws s3 cp "$OUT/initramfs.img" "${S3_PATH}/initramfs.img" \
+            --endpoint-url "$S3_ENDPOINT" 2>&1
+
+          # Upload manifest if it exists
+          if [ -f "$OUT/manifest.json" ]; then
+            s3cmd put "$OUT/manifest.json" \
+              "s3://${S3_BUCKET}/manifests/${CHANNEL}/${IMG_NAME}/manifest.json" \
+              --host="${S3_ENDPOINT##http*://}" \
+              --host-bucket="${S3_ENDPOINT##http*://}" \
+              --no-ssl 2>&1 || \
+            aws s3 cp "$OUT/manifest.json" \
+              "s3://${S3_BUCKET}/manifests/${CHANNEL}/${IMG_NAME}/manifest.json" \
+              --endpoint-url "$S3_ENDPOINT" 2>&1
+          fi
+
+          echo "PXE artifacts uploaded to ${S3_PATH}/"
+        executable: /bin/bash
+      environment:
+        S3_ACCESS: "{{ s3_access_id | default(omit) }}"
+        S3_SECRET: "{{ s3_secret_key | default(omit) }}"
+        AWS_ACCESS_KEY_ID: "{{ s3_access_id | default(omit) }}"
+        AWS_SECRET_ACCESS_KEY: "{{ s3_secret_key | default(omit) }}"
+      loop: "{{ _manifest.configs }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: _s3_upload_result
+      changed_when: true
+      failed_when: false
+
+    - name: Display S3 upload results
+      ansible.builtin.debug:
+        msg: "{{ item.stdout_lines | default(['(no output)']) | last }}"
+      loop: "{{ _s3_upload_result.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.name | default('unknown') }}"

@@ -51,3 +51,29 @@ registry_url: ""
 registry_ns: "images"
 
 # Note: squashfs settings are consumed by config_gen publish templates.
+
+# ── OpenCHAMI integration (optional) ────────────────────────────────────
+# When enabled, generates boot-service compatible YAML files after each
+# build, ready for ochami-cli to register boot parameters.
+openchami_enabled: false
+
+# S3 endpoint where boot images are served (e.g. "http://172.16.0.254:9000")
+openchami_boot_server: ""
+
+# S3 bucket for boot images
+openchami_boot_bucket: "boot-images"
+
+# Deployment channel (dev, staging, prod). Controls S3 path prefix.
+openchami_channel: "dev"
+
+# Default kernel command line parameters
+openchami_boot_params: "nomodeset ro ip=dhcp selinux=0 console=ttyS0,115200 ip6=off"
+
+# cloud-init URL (empty = omit from boot params)
+openchami_cloud_init_url: ""
+
+# Secure cloud-init URL (empty = omit from boot params)
+openchami_cloud_init_url_secure: ""
+
+# MAC addresses to include in boot-params.yaml (empty = placeholder)
+openchami_node_macs: []
