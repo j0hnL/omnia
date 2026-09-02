@@ -338,6 +338,9 @@ See [argo/README.md](argo/README.md) for full setup, k3s notes, and customizatio
 2. **`local_storage`** — creates output directory, optionally deploys MinIO
 3. **`config_gen`** — resolves packages/repos and generates image-thrillhouse YAML configs
 4. **`build`** — invokes `image-thrillhouse build` for each config (base first, then compute images)
+5. **Package manifest** — extracts the full RPM list from the squashfs (`packages.json`)
+6. **Image catalog** — updates `catalog.json` with image metadata (kernel version, package count, checksum)
+7. **OpenCHAMI boot config** *(if `openchami_enabled=true`)* — generates boot-service compatible YAML
 
 The `config_gen` role translates your Ansible variables into the image-thrillhouse
 YAML config format (`meta`/`layer`/`publish` schema). The `build` role then
@@ -352,8 +355,11 @@ RPM- and Debian-based images produce these files in `<output_dir>/<image_name>/`
 | `rootfs` | SquashFS root filesystem (zstd compressed) | Root filesystem for PXE boot |
 | `vmlinuz` | Linux kernel | PXE kernel |
 | `initramfs.img` | Initramfs with live + network support | PXE initramfs |
+| `packages.json` | Full RPM package list (name, version, release, arch) | Diff between builds, audit |
 | `manifest.json` | Build metadata: sha256, sizes, OS, build date | Provenance + verification |
 | `SHA256SUMS` | Checksums for all output files | `sha256sum -c SHA256SUMS` |
+
+The `<output_dir>/catalog.json` file tracks all built images across builds.
 
 Wolfi images produce only the squashfs rootfs (no kernel or initramfs) since
 Wolfi is a container-native distro without its own kernel. Wolfi images are
@@ -361,15 +367,59 @@ intended for containerized workloads, not bare-metal PXE boot.
 
 ### Validating built images
 
-Verify checksums and optionally boot-test the image under QEMU:
+The `validate` playbook runs automated checks against built images:
+
+```bash
+ansible-playbook omnia.open_image_builder.validate \
+  -e output_dir=/var/lib/image-builder/output
+```
+
+Checks include:
+- Squashfs integrity (`unsquashfs -s`)
+- Required packages present (verified against `packages.json`)
+- Kernel and initramfs extracted
+- dracut modules present (`livenet`, `dmsquash-live`)
+- No SSH host keys baked into image
+- No hardcoded `/etc/resolv.conf`
+- SHA256SUMS and manifest.json present
+
+Configure required packages with `validate_required_packages`:
+
+```bash
+ansible-playbook omnia.open_image_builder.validate \
+  -e output_dir=$HOME/image-builder/output \
+  -e '{"validate_required_packages": ["kernel", "dracut", "slurm-slurmd", "munge"]}'
+```
+
+For quick checksum verification, the shell script is also available:
 
 ```bash
 tools/validate_image.sh /var/lib/image-builder/output/base
 ```
 
-This checks file presence, verifies SHA256SUMS, confirms the rootfs is a
-valid squashfs, and (if `qemu-system-x86_64` is installed) boots the kernel +
-initramfs + rootfs to confirm the image reaches a usable state.
+### Diffing images between builds
+
+After two builds (e.g. nightly rebuilds), diff the package manifests to see
+what changed:
+
+```bash
+python3 tools/diff_manifests.py yesterday/packages.json today/packages.json
+```
+
+Output:
+```
+Image diff: rocky-x86_64_base
+  Previous: 2026-09-01 (574 packages)
+  Current:  2026-09-02 (574 packages)
+
+  Upgraded (2):
+    kernel                         6.12.0-211.49.1 -> 6.12.0-211.50.1
+    openssl-libs                   3.5.0-1         -> 3.5.0-2
+
+  Unchanged: 572
+```
+
+Use `--json` for machine-readable output in CI pipelines.
 
 ## Reference
 
@@ -690,6 +740,8 @@ image_builder/
 │   ├── fedora_x86_64.yml                   ← Fedora 44
 │   ├── ubuntu_x86_64.yml                   ← Ubuntu 24.04
 │   ├── debian_x86_64.yml                   ← Debian 12
+│   ├── hpc_scientific_x86_64.yml          ← HPC: compilers, MPI, FFTW, HDF5, Slurm
+│   ├── gpu_developer_x86_64.yml           ← GPU: CUDA, cuDNN, NCCL, nvidia-driver
 │   ├── slurm_hpc_cluster.yml             ← HPC Slurm cluster (4 node roles)
 │   ├── wolfi_x86_64.yml                    ← Wolfi (minimal supply-chain-secure)
 │   ├── standalone_x86_64.yml              ← RHEL with direct repos
@@ -698,19 +750,24 @@ image_builder/
 ├── playbooks/
 │   ├── build.yml                           ← Unified build playbook (preferred)
 │   ├── build_x86_64.yml                    ← x86_64 convenience wrapper
-│   └── build_aarch64.yml                   ← aarch64 convenience wrapper
+│   ├── build_aarch64.yml                   ← aarch64 convenience wrapper
+│   └── validate.yml                        ← Post-build image validation
 ├── plugins/
 │   ├── modules/                           ← Omnia integration only
 │   └── module_utils/
 ├── roles/
-│   ├── config_gen/       ← Generate image-thrillhouse YAML from Omnia vars (NEW)
-│   ├── build/            ← Invoke image-thrillhouse CLI to build images (NEW)
+│   ├── config_gen/       ← Generate image-thrillhouse YAML from Omnia vars
+│   ├── build/            ← Build images + generate package manifest + catalog
+│   ├── validate/         ← Post-build validation (packages, kernel, security)
 │   ├── repo_mirror/      ← Local RPM mirror (containerized reposync + nginx)
 │   ├── local_storage/    ← Output directory + optional MinIO S3 auto-deploy
 │   ├── fetch_packages/   ← Package list resolution (legacy, replaced by config_gen)
 │   ├── image_creation/   ← Direct buildah builds (legacy, replaced by build)
 │   └── cross_build/      ← Cross-build via dnf --forcearch (legacy, replaced by build)
-├── tools/                ← convert_omnia_config.py, validate_image.sh
+├── tools/
+│   ├── convert_omnia_config.py            ← Convert Omnia config to standalone vars
+│   ├── diff_manifests.py                  ← Diff package manifests between builds
+│   └── validate_image.sh                  ← Quick checksum verification
 ├── Makefile              ← Developer tasks (make help)
 ├── CONTRIBUTING.md       ← Contributor guide
 └── tests/                ← pytest test suite

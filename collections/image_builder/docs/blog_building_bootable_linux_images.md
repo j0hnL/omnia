@@ -193,20 +193,45 @@ builds, which writes to `/proc/sys/fs/binfmt_misc` and requires real root.
 But that's a one-time setup -- ask your admin to run it once and it persists
 across reboots.
 
+## Beyond Building: Image Lifecycle
+
+Building an image is one step. Managing images over time is the harder
+problem. The collection includes lifecycle features that image-thrillhouse
+doesn't provide:
+
+**Package manifests.** Every build produces `packages.json` with the full
+RPM list (574 packages for Rocky 10 base). Diff two manifests with
+`tools/diff_manifests.py` to see what changed between nightly builds --
+which packages were upgraded, what was added or removed.
+
+**Image catalog.** `catalog.json` tracks all built images: name, channel,
+kernel version, package count, squashfs size, SHA-256 checksum. One file
+that answers "what do I have and is it current."
+
+**Validation.** `ansible-playbook omnia.open_image_builder.validate` runs
+9 automated checks: squashfs integrity, required packages, kernel modules,
+security (no SSH host keys baked in, no hardcoded resolv.conf). Run it
+after every build, gate promotion on it passing.
+
 ## What's Left
 
-- **Image signing** — cosign/sigstore integration and SBOM generation
-- **More distros** — SUSE/openSUSE, Azure Linux, Alpine
-- **Faster cross-builds** — native ARM CI instead of QEMU emulation
-- **Boot testing** — automated QEMU boot validation in CI
+- **Image signing** -- cosign/sigstore integration and SBOM generation
+- **CVE scanning** -- wire image-thrillhouse's OpenSCAP into the build pipeline
+- **More distros** -- SUSE/openSUSE, Azure Linux, Alpine
+- **OpenCHAMI API modules** -- Ansible modules for boot-service and SMD
 
 ## Try It
 
 ```bash
 ansible-galaxy collection install omnia.open_image_builder
 
+# Build
 ansible-playbook omnia.open_image_builder.build \
   -e @examples/rocky_x86_64.yml
+
+# Validate
+ansible-playbook omnia.open_image_builder.validate \
+  -e output_dir=/var/lib/image-builder/output
 ```
 
 Images land in `/var/lib/image-builder/output/`. Serve over HTTP, point PXE

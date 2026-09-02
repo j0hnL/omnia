@@ -28,11 +28,18 @@ or an OCI registry. That's the entire scope.
 
 ```
   YAML spec ──→ image-thrillhouse ──→ squashfs + vmlinuz + initramfs
+                                      + packages.json + catalog.json
 ```
 
-It doesn't know or care what provisions your nodes. It doesn't know
-what boot service points nodes at those files. The contract between this
-tool and the rest of your infrastructure is three files and a URL.
+It also tracks what's in those images. Every build produces a package
+manifest (`packages.json`) with the full RPM list, and updates an image
+catalog (`catalog.json`) with kernel version, package count, squashfs
+checksum, and build date. You can diff two manifests to see what changed
+between nightly builds. A validation playbook runs 9 automated checks
+against the built image before you promote it.
+
+It doesn't know or care what provisions your nodes. The contract between
+this tool and the rest of your infrastructure is files and a URL.
 
 ## What This Tool Does NOT Do
 
