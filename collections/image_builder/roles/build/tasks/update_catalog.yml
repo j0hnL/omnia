@@ -1,0 +1,33 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Update image catalog (catalog.json) with metadata from each built image.
+---
+
+- name: Update image catalog
+  ansible.builtin.shell:
+    cmd: >
+      {{ role_path }}/files/update_catalog.sh
+      "{{ output_dir }}/catalog.json"
+      "{{ item.name }}"
+      "{{ output_dir }}/{{ item.name }}/packages.json"
+      "{{ output_dir }}/base/{{ item.name }}-{{ os_version | default('latest') }}.squashfs"
+      "{{ openchami_channel | default('dev') }}"
+      "{{ ansible_date_time.iso8601 | default('unknown') }}"
+      "{{ os_family | default('rhel') }}"
+      "{{ os_version | default('') }}"
+      "{{ target_arch | default('x86_64') }}"
+    executable: /bin/bash
+  loop: "{{ _manifest.configs }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _catalog_result
+  changed_when: true
+  failed_when: false
+
+- name: Display catalog update results
+  ansible.builtin.debug:
+    msg: "{{ item.stdout_lines | default(['(no output)']) | last }}"
+  loop: "{{ _catalog_result.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name | default('unknown') }}"

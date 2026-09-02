@@ -1,0 +1,28 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# validate role defaults
+---
+
+work_dir: "/var/lib/image-builder"
+output_dir: "{{ work_dir }}/output"
+
+os_family: "rhel"
+os_version: "10.0"
+target_arch: "x86_64"
+image_name_suffix: ""
+
+# Packages that must be present in the image (checked against packages.json)
+validate_required_packages:
+  - kernel
+  - dracut
+  - openssh-server
+
+# Kernel modules that must be present in /lib/modules/<kver>/kernel/
+validate_required_kmodules: []
+
+# Enable security checks (SSH keys, world-writable files)
+validate_security_checks: true
+
+# Enable QEMU boot test (requires qemu-system-x86_64)
+validate_boot_test: false

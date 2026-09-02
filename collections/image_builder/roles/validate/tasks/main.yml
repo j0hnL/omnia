@@ -1,0 +1,19 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Validate built OS images: package presence, kernel, security checks.
+---
+
+- name: Find images to validate
+  ansible.builtin.find:
+    paths: "{{ output_dir }}"
+    file_type: directory
+    recurse: false
+  register: _image_dirs
+
+- name: Validate each image
+  ansible.builtin.include_tasks: validate_one.yml
+  loop: "{{ _image_dirs.files | map(attribute='path') | select('match', '.*/(?!base$)') | list }}"
+  loop_control:
+    loop_var: _validate_dir
+    label: "{{ _validate_dir | basename }}"

@@ -1,0 +1,33 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Extract installed package list from built image and save as packages.json.
+# Uses unsquashfs to read the RPM database from the squashfs without root.
+---
+
+- name: Generate package manifest for each image
+  ansible.builtin.shell:
+    cmd: >
+      {{ role_path }}/files/extract_packages.sh
+      "{{ output_dir }}/base/{{ item.name }}-{{ os_version | default('latest') }}.squashfs"
+      "{{ output_dir }}/{{ item.name }}/packages.json"
+      "{{ item.name }}"
+      "{{ openchami_channel | default('dev') }}"
+      "{{ ansible_date_time.iso8601 | default('unknown') }}"
+      "{{ os_family | default('rhel') }}"
+      "{{ os_version | default('') }}"
+      "{{ target_arch | default('x86_64') }}"
+    executable: /bin/bash
+  loop: "{{ _manifest.configs }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _pkg_manifest_result
+  changed_when: true
+  failed_when: false
+
+- name: Display package manifest results
+  ansible.builtin.debug:
+    msg: "{{ item.stdout_lines | default(['(no output)']) | last }}"
+  loop: "{{ _pkg_manifest_result.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name | default('unknown') }}"

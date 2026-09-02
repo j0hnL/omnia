@@ -1,0 +1,21 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+---
+galaxy_info:
+  author: John Lockman
+  description: Validate built OS images (package presence, kernel, security checks)
+  company: Dell Technologies
+  license: Apache-2.0
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions: [9, 10]
+    - name: Fedora
+      versions: [all]
+    - name: Ubuntu
+      versions: [all]
+  galaxy_tags:
+    - hpc
+    - image
+    - validation
+dependencies: []

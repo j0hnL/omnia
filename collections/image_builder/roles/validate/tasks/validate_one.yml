@@ -1,0 +1,172 @@
+# Copyright 2026 Dell Inc. or its subsidiaries. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0
+#
+# Validate a single built image directory.
+---
+
+- name: "Set image name for {{ _validate_dir | basename }}"
+  ansible.builtin.set_fact:
+    _val_name: "{{ _validate_dir | basename }}"
+    _val_dir: "{{ _validate_dir }}"
+
+- name: "Check squashfs exists for {{ _val_name }}"
+  ansible.builtin.find:
+    paths: "{{ output_dir }}/base"
+    patterns: "{{ _val_name }}-*.squashfs"
+  register: _val_squashfs
+
+- name: "Validate {{ _val_name }}"
+  when: _val_squashfs.matched > 0
+  block:
+    - name: "Validate squashfs integrity for {{ _val_name }}"
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          SQ="{{ _val_squashfs.files[0].path }}"
+          unsquashfs -s "$SQ" > /dev/null 2>&1
+          echo "PASS: squashfs is valid"
+        executable: /bin/bash
+      register: _val_sq_check
+      changed_when: false
+      failed_when: _val_sq_check.rc != 0
+
+    - name: "Validate packages, kernel, and security for {{ _val_name }}"
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          SQ="{{ _val_squashfs.files[0].path }}"
+          OUT="{{ _val_dir }}"
+          RESULTS=""
+          FAILURES=0
+
+          # Extract minimal filesystem for checks
+          TMPDIR=$(mktemp -d)
+          trap "rm -rf '$TMPDIR'" EXIT
+
+          unsquashfs -f -d "$TMPDIR" "$SQ" \
+            'boot/*' 'lib/modules/*' 'etc/ssh/*' 'etc/resolv.conf' \
+            'var/lib/rpm/*' 2>/dev/null || \
+          unsquashfs -f -d "$TMPDIR" "$SQ" 2>/dev/null
+
+          # --- Check 1: Required packages ---
+          if [ -f "$OUT/packages.json" ]; then
+            REQUIRED_PKGS="{{ validate_required_packages | join(' ') }}"
+            for pkg in $REQUIRED_PKGS; do
+              if python3 -c "
+          import json, sys
+          pkgs = [p['name'] for p in json.load(open('$OUT/packages.json')).get('packages', [])]
+          sys.exit(0 if '$pkg' in pkgs else 1)
+          " 2>/dev/null; then
+                RESULTS="$RESULTS\nPASS: package '$pkg' present"
+              else
+                RESULTS="$RESULTS\nFAIL: package '$pkg' missing"
+                FAILURES=$((FAILURES + 1))
+              fi
+            done
+          else
+            RESULTS="$RESULTS\nSKIP: no packages.json, cannot check required packages"
+          fi
+
+          # --- Check 2: Kernel exists ---
+          KVER=$(ls "$TMPDIR/lib/modules/" 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$KVER" ]; then
+            RESULTS="$RESULTS\nPASS: kernel modules found ($KVER)"
+          else
+            RESULTS="$RESULTS\nFAIL: no kernel modules in /lib/modules/"
+            FAILURES=$((FAILURES + 1))
+          fi
+
+          # --- Check 3: Kernel binary exists ---
+          if [ -f "$OUT/vmlinuz" ]; then
+            RESULTS="$RESULTS\nPASS: vmlinuz extracted"
+          else
+            RESULTS="$RESULTS\nFAIL: vmlinuz not found in output"
+            FAILURES=$((FAILURES + 1))
+          fi
+
+          # --- Check 4: Initramfs exists ---
+          if [ -f "$OUT/initramfs.img" ]; then
+            RESULTS="$RESULTS\nPASS: initramfs.img extracted"
+          else
+            RESULTS="$RESULTS\nFAIL: initramfs.img not found in output"
+            FAILURES=$((FAILURES + 1))
+          fi
+
+          # --- Check 5: dracut modules (if initramfs exists) ---
+          if [ -f "$OUT/initramfs.img" ] && command -v lsinitrd >/dev/null 2>&1; then
+            for mod in livenet dmsquash-live; do
+              if lsinitrd "$OUT/initramfs.img" 2>/dev/null | grep -q "$mod"; then
+                RESULTS="$RESULTS\nPASS: dracut module '$mod' present"
+              else
+                RESULTS="$RESULTS\nWARN: dracut module '$mod' not found"
+              fi
+            done
+          fi
+
+          {% if validate_security_checks | default(true) | bool %}
+          # --- Check 6: No SSH host keys baked in ---
+          if ls "$TMPDIR/etc/ssh/ssh_host_"*"_key" 2>/dev/null | grep -q .; then
+            RESULTS="$RESULTS\nFAIL: SSH host keys baked into image (should be generated at boot)"
+            FAILURES=$((FAILURES + 1))
+          else
+            RESULTS="$RESULTS\nPASS: no SSH host keys in image"
+          fi
+
+          # --- Check 7: No hardcoded resolv.conf ---
+          if [ -f "$TMPDIR/etc/resolv.conf" ] && [ -s "$TMPDIR/etc/resolv.conf" ]; then
+            if grep -q "nameserver" "$TMPDIR/etc/resolv.conf" 2>/dev/null; then
+              RESULTS="$RESULTS\nWARN: /etc/resolv.conf has hardcoded nameservers"
+            else
+              RESULTS="$RESULTS\nPASS: /etc/resolv.conf is empty or placeholder"
+            fi
+          else
+            RESULTS="$RESULTS\nPASS: no hardcoded /etc/resolv.conf"
+          fi
+          {% endif %}
+
+          # --- Check 8: SHA256SUMS present ---
+          if [ -f "$OUT/SHA256SUMS" ]; then
+            RESULTS="$RESULTS\nPASS: SHA256SUMS present"
+          else
+            RESULTS="$RESULTS\nWARN: SHA256SUMS not found"
+          fi
+
+          # --- Check 9: manifest.json present ---
+          if [ -f "$OUT/manifest.json" ]; then
+            RESULTS="$RESULTS\nPASS: manifest.json present"
+          else
+            RESULTS="$RESULTS\nWARN: manifest.json not found"
+          fi
+
+          # --- Summary ---
+          echo "============================================"
+          echo "Validation: {{ _val_name }}"
+          echo "============================================"
+          echo -e "$RESULTS"
+          echo "--------------------------------------------"
+          if [ $FAILURES -eq 0 ]; then
+            echo "RESULT: ALL CHECKS PASSED"
+          else
+            echo "RESULT: $FAILURES CHECK(S) FAILED"
+          fi
+          echo "============================================"
+
+          exit $FAILURES
+        executable: /bin/bash
+      register: _val_result
+      changed_when: false
+      failed_when: false
+
+    - name: "Display validation result for {{ _val_name }}"
+      ansible.builtin.debug:
+        msg: "{{ _val_result.stdout_lines | default(['(no output)']) }}"
+
+    - name: "Fail if validation checks failed for {{ _val_name }}"
+      ansible.builtin.fail:
+        msg: "Image validation failed for {{ _val_name }}: {{ _val_result.rc }} check(s) failed"
+      when: _val_result.rc | default(0) | int > 0
+
+- name: "Skip validation for {{ _val_name }} — no squashfs found"
+  ansible.builtin.debug:
+    msg: "No squashfs found for {{ _val_name }}, skipping validation"
+  when: _val_squashfs.matched == 0

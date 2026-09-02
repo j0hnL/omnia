@@ -40,6 +40,12 @@
     loop_var: _build_item
     label: "{{ _build_item.name }}"
 
+- name: Generate package manifests
+  ansible.builtin.include_tasks: generate_package_manifest.yml
+
+- name: Update image catalog
+  ansible.builtin.include_tasks: update_catalog.yml
+
 - name: Upload PXE artifacts to S3 for OpenCHAMI
   ansible.builtin.include_tasks: upload_pxe_s3.yml
   when:
